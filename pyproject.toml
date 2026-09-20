@@ -1,43 +1,36 @@
 [project]
 name = "geosamroad"
 version = "0.1.0"
-description = "Add your description here"
+description = "Repository for GeoSAMRoad data and deployment code"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "matplotlib>=3.10.8",
     "mkdocs>=1.6.1",
-    "numpy>=1.24.0",
     "mkdocs-gen-files>=0.6.1",
     "mkdocs-literate-nav>=0.6.3",
     "mkdocstrings[python]>=1.0.4",
-    "scikit-image>=0.26.0",
-    "pydantic>=2.13.4",
 ]
 
 [project.optional-dependencies]
 
-samroad = [
-    "addict",               # Configuration dictionary management (utils.py)
-    "hopcroftkarp",         # TOPO metric marble-hole matching (metrics/topo)
-    "svgwrite",             # TOPO metric debug rendering import (metrics/topo/showTOPO.py)
-    "igraph",               # High-performance graph processing (dataset.py via graph_utils)
-    "imageio",              # Image reading/writing (inferencer.py)
-    "networkx",             # Graph topology building (graph_extraction.py)
-    "numpy>=1.24.0",        # Array manipulation
-    "opencv-python",        # Image processing (cv2)
-    "lightning",            # Training orchestration (train.py, model.py)
-    "pyyaml",               # Parsing YAML config files (utils.py)
-    "rtree",                # Spatial indexing for bounding box queries (dataset.py, inferencer.py)
-    "scikit-image",         # Image drawing algorithms (graph_extraction.py)
-    "scikit-learn",         # KDTree for spatial neighbor queries (graph_extraction.py)
-    "scipy",                # KDTree for spatial point queries (dataset.py, inferencer.py)
-    "segment-anything",     # Official Meta SAM repository (model.py)
-    "tcod",                 # A* Pathfinding library (graph_extraction.py)
-    "torch>=2.1.0",         # Core deep learning
-    "torchmetrics",         # Evaluation metrics like IoU and F1 (model.py)
-    "torchvision>=0.25.0",  # Vision operations and loss functions
-    "wandb",
+sentinel2 = [
+    "sknw",
+    "scikit-image",
+    "opencv-python",
+    "earthengine-api>=1.7.22",
+    "geopandas>=1.1.3",
+    "rasterio>=1.5.0",
+    "opencv-python",
+    "shapely>=2.1.2",
+    "numpy>=2.4.4",
+    "pyarrow>=23.0.1",
+    "jenkspy>=0.4.1",
+    "pandas>=3.0.2",
+    "typer>=0.24.1",
+    "rioxarray>=0.22.0",
+    "torch>=2.11.0",
+    "pyogrio>=0.12.1",
+    "pyyaml",
 ]
 
 instageo = [
@@ -45,45 +38,47 @@ instageo = [
 ]
 
 geosamroad = [
-    # --- core training ---
-    "lightning",                    # Trainer (train.py, model.py)
+    # training
+    "lightning",
     "torch>=2.1.0",
     "torchvision>=0.25.0",
-    "torchmetrics",                 # IoU / F1 / PR curves (model.py)
+    "torchmetrics",
     "numpy>=1.24.0",
     "wandb",
-    # --- models ---
-    "terratorch",                   # EncoderDecoderFactory, TerraMind, timm backbones
-    "segmentation-models-pytorch",  # MiT (mit_b0) encoders + smp decoders
-    "segment-anything",             # SAM ViT image encoder
-    "huggingface-hub",              # TerraMind checkpoint download
-    "albumentations>=2.0.8",
-    # --- dataset readers ---
+    # models
+    "terratorch",
+    "segmentation-models-pytorch",
+    "segment-anything",
+    "huggingface-hub",
+    "torchgeo>=0.9.0,<0.10",
+    # dataset
     "rasterio>=1.5.0",
-    "geopandas>=1.1.3",             # buffered-centreline rasterisation
+    "geopandas>=1.1.3",
     "shapely>=2.1.2",
-    "pandas>=2.0",                  # splits/*.csv
-    "pyarrow",                      # graph parquets
-    "opencv-python",                # keypoint disks, viz (cv2)
-    "pydantic>=2.13.4",             # dataset configs
-    "addict",                       # flat yaml config (utils.py)
+    "pandas>=2.0",
+    "pyarrow",
+    "opencv-python",
+    "pydantic>=2.13.4",
+    "addict",
     "pyyaml",
-    # --- graph / TopoNet ---
-    "igraph",                       # subdivide + BFS over the GT graph
-    "rtree",                        # patch bbox queries
-    "scipy",                        # KDTree
+    "albumentations>=2.0.8",
+    # graphs and utility
+    "igraph",
+    "rtree",
+    "scipy",
     "scikit-learn",
-    "scikit-image",                 # graph_extraction drawing
-    "networkx",                     # graph topology building
-    "tcod",                         # A* in graph_extraction
+    "scikit-image>=0.26.0",
+    "networkx",
+    "numba",
+    "tcod",
     "imageio",
-    # --- graph metrics (eval_graphs) ---
-    "hopcroftkarp",                 # TOPO marble-hole matching
-    "svgwrite",                     # imported by metrics/topo/showTOPO.py
-    # --- misc ---
-    "psutil",                       # MemoryMonitor callback
+    # graph metrics
+    "hopcroftkarp",
+    "svgwrite",
+    # misc
+    "psutil",
     "matplotlib>=3.10.8",
-    "kagglehub",                    # dataset download on Kaggle
+    "kagglehub",
 ]
 
 
@@ -104,7 +99,7 @@ explicit = true
 [tool.uv]
 environments = [
     "sys_platform == 'darwin' and platform_machine == 'arm64'",  # Apple Silicon Mac
-    # "sys_platform == 'darwin' and platform_machine == 'x86_64'"   # Intel Mac
+    "sys_platform == 'linux' and platform_machine == 'x86_64'"
 ]
 
 

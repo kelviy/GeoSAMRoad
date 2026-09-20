@@ -19,7 +19,7 @@ TRAIN_LEN_FACTOR: 10.0
 MIN_ROAD_DENSITY: 0.0
 MIN_CROP_ROAD_PX: 50
 MAX_CROP_ATTEMPTS: 20
-PRELOAD_GRAPHS: true
+PRELOAD_GRAPHS: true         # cache graphs
 KEYPOINT_BUFFER_M: 10.0
 
 # ======================= training ======================
@@ -27,23 +27,23 @@ BATCH_SIZE: 16
 DATA_WORKER_NUM: 3
 TRAIN_EPOCHS: 100
 BASE_LR: 0.001
-ENCODER_LR_FACTOR: 0.1     
+ENCODER_LR_FACTOR: 0.1
 WEIGHT_DECAY: 0.0
 LR_MILESTONES: [70,]
 LR_GAMMA: 0.1
-PRECISION: 32              
+PRECISION: 32
 GRADIENT_CLIP_VAL: 1.0
 ACCUMULATE_GRAD_BATCHES: 1
 SEED: 42
 
 # ======================= loss ==========================
-MASK_LOSS: bce_dice       
+MASK_LOSS: bce_dice
 
 # ======================= TopoNet =======================
 TOPO_SAMPLE_NUM: 128
 TOPONET_VERSION: normal
-ROAD_NMS_RADIUS: 8        
-NEIGHBOR_RADIUS: 32        
+ROAD_NMS_RADIUS: 8            # spacenet is 16
+NEIGHBOR_RADIUS: 32           # spacenet is 64
 MAX_NEIGHBOR_QUERIES: 16
 ITSC_NMS_RADIUS: 4
 
@@ -60,7 +60,11 @@ MONITOR_MODE: max
 
 # ======================= inference =====================
 INFER_BATCH_SIZE: 16
-INFER_PATCHES_PER_EDGE: 8
-ITSC_THRESHOLD: 0.248       
-ROAD_THRESHOLD: 0.364
-TOPO_THRESHOLD: 0.500
+INFER_PATCHES_PER_EDGE: 16
+ITSC_THRESHOLD: 0.1922 
+ROAD_THRESHOLD: 0.3608
+TOPO_THRESHOLD: 0.4863
+
+# ======================= skeletonisation =====================
+THIN_BEFORE_NMS: true
+THIN_HOLE_SIZE: 16

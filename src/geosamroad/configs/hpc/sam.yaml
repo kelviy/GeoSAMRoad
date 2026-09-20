@@ -2,7 +2,7 @@ DATASET: ROSA
 DATASET_DIR: /scratch/user/data/ROSADataset
 
 # ======================= encoder =======================
-ENCODER_MODEL: sam      
+ENCODER_MODEL: sam
 RGB_INPUT: true
 RGB_SOURCE: enhanced
 PRETRAINED: true
@@ -11,7 +11,7 @@ SAM_CKPT_PATH: /scratch/user/pretrain_checkpoints/sam_vit_b_01ec64.pth
 
 # ======================= input geometry ================
 CROP_SIZE: 128
-UPSCALE: 2                  
+UPSCALE: 2
 
 # ======================= data ==========================
 AUGMENT: true
@@ -19,8 +19,8 @@ TRAIN_LEN_FACTOR: 10.0
 MIN_ROAD_DENSITY: 0.0
 MIN_CROP_ROAD_PX: 50
 MAX_CROP_ATTEMPTS: 20
-PRELOAD_GRAPHS: true # cache graphs
-KEYPOINT_BUFFER_M: 10.0 # for upscale
+PRELOAD_GRAPHS: true      # cache graphs
+KEYPOINT_BUFFER_M: 10.0
 
 # ======================= training ======================
 BATCH_SIZE: 16
@@ -28,22 +28,22 @@ DATA_WORKER_NUM: 4
 TRAIN_EPOCHS: 100
 BASE_LR: 1.0e-3
 ENCODER_LR_FACTOR: 0.1
-WEIGHT_DECAY: 0.0   
+WEIGHT_DECAY: 0.0
 LR_MILESTONES: [70,]
 LR_GAMMA: 0.1
-PRECISION: 32               
+PRECISION: 32
 GRADIENT_CLIP_VAL: 1.0
 ACCUMULATE_GRAD_BATCHES: 1
 SEED: 42
 
 # ======================= loss ==========================
-MASK_LOSS: bce_dice        
+MASK_LOSS: bce_dice
 
 # ======================= TopoNet =======================
 TOPO_SAMPLE_NUM: 128
 TOPONET_VERSION: normal
-ROAD_NMS_RADIUS: 8          # spacenet is 16
-NEIGHBOR_RADIUS: 32          # spacenet is 64
+ROAD_NMS_RADIUS: 8            # spacenet is 16
+NEIGHBOR_RADIUS: 32           # spacenet is 64
 MAX_NEIGHBOR_QUERIES: 16
 ITSC_NMS_RADIUS: 4
 
@@ -51,7 +51,7 @@ ITSC_NMS_RADIUS: 4
 RUN_NAME: sam
 WANDB_PROJECT: geosamroad
 WANDB_ENTITY: null
-WANDB_MODE: null         
+WANDB_MODE: null
 CHECKPOINT_DIR: /scratch/user/output/sam_geosamroad
 LOG_EVERY_N_STEPS: 10
 SAVE_TOP_K: 1
@@ -59,8 +59,12 @@ MONITOR: road_iou
 MONITOR_MODE: max
 
 # ======================= inference =====================
-INFER_BATCH_SIZE: 32
+INFER_BATCH_SIZE: 16
 INFER_PATCHES_PER_EDGE: 16
-ITSC_THRESHOLD: 0.248    
-ROAD_THRESHOLD: 0.364
-TOPO_THRESHOLD: 0.500
+ITSC_THRESHOLD: 0.3098
+ROAD_THRESHOLD: 0.3216
+TOPO_THRESHOLD: 0.5294
+
+# ======================= skeletonisation =====================
+THIN_BEFORE_NMS: true
+THIN_HOLE_SIZE: 16

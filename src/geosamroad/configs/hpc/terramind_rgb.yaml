@@ -2,11 +2,11 @@ DATASET: ROSA
 DATASET_DIR: /scratch/user/data/ROSADataset
 
 # ======================= encoder =======================
-ENCODER_MODEL: terramind  
+ENCODER_MODEL: terramind
 RGB_INPUT: true
-RGB_SOURCE: enhanced       
+RGB_SOURCE: enhanced
 PRETRAINED: true
-SAM_VERSION: vit_b         
+SAM_VERSION: vit_b
 SAM_CKPT_PATH: null
 TERRAMIND_VERSION: small
 
@@ -20,8 +20,8 @@ TRAIN_LEN_FACTOR: 10.0
 MIN_ROAD_DENSITY: 0.0
 MIN_CROP_ROAD_PX: 50
 MAX_CROP_ATTEMPTS: 20
-PRELOAD_GRAPHS: true # cache graphs
-KEYPOINT_BUFFER_M: 10.0 # for upscale
+PRELOAD_GRAPHS: true        # cache graphs
+KEYPOINT_BUFFER_M: 10.0
 
 # ======================= training ======================
 BATCH_SIZE: 16
@@ -38,13 +38,13 @@ ACCUMULATE_GRAD_BATCHES: 1
 SEED: 42
 
 # ======================= loss ==========================
-MASK_LOSS: bce_dice          # bce | bce_dice
+MASK_LOSS: bce_dice
 
 # ======================= TopoNet =======================
 TOPO_SAMPLE_NUM: 128
 TOPONET_VERSION: normal
-ROAD_NMS_RADIUS: 8          # spacenet is 16
-NEIGHBOR_RADIUS: 32          # spacenet is 64
+ROAD_NMS_RADIUS: 8            # spacenet is 16
+NEIGHBOR_RADIUS: 32           # spacenet is 64
 MAX_NEIGHBOR_QUERIES: 16
 ITSC_NMS_RADIUS: 4
 
@@ -60,8 +60,12 @@ MONITOR: road_iou
 MONITOR_MODE: max
 
 # ======================= inference =====================
-INFER_BATCH_SIZE: 32
+INFER_BATCH_SIZE: 16
 INFER_PATCHES_PER_EDGE: 16
-ITSC_THRESHOLD: 0.248
-ROAD_THRESHOLD: 0.364
-TOPO_THRESHOLD: 0.500
+ITSC_THRESHOLD: 0.2118
+ROAD_THRESHOLD: 0.2941
+TOPO_THRESHOLD: 0.4941
+
+# ======================= skeletonisation =====================
+THIN_BEFORE_NMS: true
+THIN_HOLE_SIZE: 16
