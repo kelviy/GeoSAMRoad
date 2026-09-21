@@ -1,0 +1,30 @@
+# Config for Dataset CLI
+# Usage: 
+#   uv run python -m sentinel2data.cli --config src/sentinel2data/configs/rosa.yaml generate
+
+roads:
+  # out: /Volumes/MacOSFiles/RoadVectorData/clean_road_data/cdngi_dense.parquet
+  # cdngi: /Volumes/MacOSFiles/RoadVectorData/CDNGI_Data     # .gpkg file or directory of province *.gpkg
+  out: /Volumes/MacOSFiles/RoadVectorData/clean_road_change_overture_labels.parquet
+  overture: /Volumes/MacOSFiles/RoadVectorData/OvertureSARoadData/south_africa_overture_roads.parquet
+  # out: /Volumes/MacOSFiles/RoadVectorData/clean_road_data/FRST_dense.parquet
+  # frst: /Volumes/MacOSFiles/RoadVectorData/FRST_RoadDataset/SouthAfrica/SouthAfrica.shp
+  # union_with: /Volumes/MacOSFiles/RoadVectorData/clean_road_data/cdngi_dense.parquet
+    
+generate:
+  # roads: /Volumes/MacOSFiles/RoadVectorData/large_medium_scale_data/CDNGI_large_medium_scale_roads.parquet
+  roads: /Volumes/MacOSFiles/RoadVectorData/clean_road_data/cdngi_dense.parquet
+  imagery_dir: /Volumes/FILES/ROSASampling60zones2020_images          # pre-split root containing train/, val/, test/
+  output_dir: /Volumes/MacOSFiles/ROSADataset
+  tile_size: 512
+  patch_size: 256
+
+norm-stats:
+  dataset_dir: /Volumes/FILES/ROSADataset
+  out: null # src/unet/configs/norm_stats.yaml
+
+
+# Per-split biome + classification ratios and road-density stats
+summary:
+  dataset_dir: /Volumes/FILES/ROSADataset
+  out: null                        # default: <dataset_dir>/dataset_summary.yaml
