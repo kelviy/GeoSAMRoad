@@ -12,6 +12,14 @@ dependencies = [
 
 [project.optional-dependencies]
 
+globalurbanmapper = [
+    "earthengine-api>=1.4.0",
+    "numpy>=1.24.0",
+    "rasterio>=1.3.0",
+    "scikit-image>=0.22.0",
+    "shapely>=2.1.2",
+]
+
 sentinel2 = [
     "sknw",
     "scikit-image",
@@ -123,4 +131,4 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/geosamroad", "src/sentinel2data"]
+packages = ["src/geosamroad", "src/sentinel2data", "src/globalurbanmapper_gee"]
