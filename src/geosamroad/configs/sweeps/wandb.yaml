@@ -1,0 +1,36 @@
+# Commands:
+#   wandb sweep --project geosamroad src/geosamroad/configs/sweeps/wandb.yaml
+#   wandb agent <entity>/<project>/<sweep-id>
+
+# Multiple GPU:
+#   CUDA_VISIBLE_DEVICES=0 wandb agent <id> &
+#   CUDA_VISIBLE_DEVICES=1 wandb agent <id> & wait
+
+program: src/geosamroad/train.py
+
+method: grid
+
+metric:
+  name: road_iou
+  goal: maximize
+
+parameters:
+  BASE_LR:
+    values: [1.0e-4, 3.0e-4, 1.0e-3, 5.0e-3]
+
+  ENCODER_LR_FACTOR:
+    values: [0.1, 0.5, 1.0]
+
+  BATCH_SIZE:
+    values: [8, 16, 32]
+
+command:
+  - ${env}
+  - ${interpreter}
+  - -m
+  - geosamroad.train
+  - --config
+  - src/geosamroad/configs/hpc/sam.yaml
+  - --devices
+  - "1"
+  - ${args}

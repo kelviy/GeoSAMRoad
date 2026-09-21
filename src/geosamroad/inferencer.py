@@ -2,8 +2,8 @@
 
 Usage:
     python -m geosamroad.inferencer \
-        --config src/geosamroad/configs/local/model.yaml \
-        --checkpoint /kaggle/working/checkpoints/model/best.ckpt \
+        --config src/geosamroad/configs/hpc/<model.yaml> \
+        --checkpoint checkpoints/model/best.ckpt \
         --split test --output-dir save/model_output
 """
 import math
@@ -21,6 +21,7 @@ import torch
 import yaml
 from rasterio.windows import Window
 import rasterio
+from skimage.morphology import remove_small_holes, remove_small_objects, skeletonize
 
 from geosamroad.sam_road import graph_extraction, graph_utils
 
@@ -74,12 +75,6 @@ def pick_device(name):
 
 
 def min_patches_per_edge(image_size, patch_size):
-    """Fewest patches per edge that still tile ``image_size`` with no gap.
-
-    The starts are ``linspace(0, image_size - patch_size, n)``, so consecutive
-    ones are ``(image_size - patch_size) / (n - 1)`` apart; that has to be at
-    most ``patch_size``, i.e. ``n >= image_size / patch_size``.
-    """
     return max(1, math.ceil(image_size / patch_size))
 
 
@@ -101,13 +96,39 @@ def patch_offsets(image_size, patch_size, patches_per_edge):
     return [(int(x), int(y)) for y in starts for x in starts]
 
 
+def thin_road_mask(road_mask, config):
+    if not bool(config.get("THIN_BEFORE_NMS", False)):
+        return None
+    binary = road_mask > float(config.ROAD_THRESHOLD) * 255
+    if not binary.any():
+        return None
+
+
+    hole_size = int(config.get("THIN_HOLE_SIZE", 4))
+    if hole_size > 0:
+        binary = remove_small_objects(binary, max_size=hole_size)
+        binary = remove_small_holes(binary, max_size=hole_size)
+        if not binary.any():
+            return None
+
+    return (road_mask * skeletonize(binary)).astype(np.uint8)
+
+
+def _move_features_to_device(features, device):
+    if isinstance(features, (list, tuple)):
+        return type(features)(f.to(device) for f in features)
+    return features.to(device)
+
+
 def infer_one_tile(net, image, config, device):
-    """image: [C, H, W] float tensor. Returns (pred_nodes_rc, pred_edges,
+    """From image [C, H, W], predict outputs (pred_nodes_rc, pred_edges,
     keypoint_mask_u8, road_mask_u8) in upscaled-pixel coordinates."""
     _, H, W = image.shape
     patch = int(config.PATCH_SIZE)
     offsets = patch_offsets(H, patch, int(config.INFER_PATCHES_PER_EDGE))
     batch_size = int(config.INFER_BATCH_SIZE)
+
+    cache_cpu = bool(config.get("INFER_CACHE_FEATURES_CPU", False))
 
     fused = torch.zeros(2, H, W, device=device)
     counter = torch.zeros(H, W, device=device)
@@ -122,7 +143,7 @@ def infer_one_tile(net, image, config, device):
         with torch.no_grad():
             # [B, H, W, 2], [B, D, h, w]
             mask_scores, features = net.infer_masks_and_img_features(patches)
-        batch_features.append(features)
+        batch_features.append(_move_features_to_device(features, "cpu") if cache_cpu else features)
         batch_offsets.append(chunk)
         for i, (x, y) in enumerate(chunk):
             fused[0, y:y + patch, x:x + patch] += mask_scores[i, :, :, 0]
@@ -134,7 +155,10 @@ def infer_one_tile(net, image, config, device):
     road_mask = (fused[1] * 255).to(torch.uint8).cpu().numpy()
 
     # (x, y) points from the fused masks
-    graph_points = graph_extraction.extract_graph_points(keypoint_mask, road_mask, config)
+    extract_mask = thin_road_mask(road_mask, config)
+    graph_points = graph_extraction.extract_graph_points(
+        keypoint_mask, road_mask if extract_mask is None else extract_mask, config
+    )
     if graph_points.shape[0] == 0:
         return graph_points, np.zeros((0, 2), dtype=np.int64), keypoint_mask, road_mask
 
@@ -146,6 +170,8 @@ def infer_one_tile(net, image, config, device):
     max_nbr = int(config.MAX_NEIGHBOR_QUERIES)
     edge_scores, edge_counts = defaultdict(float), defaultdict(float)
     for features, chunk in zip(batch_features, batch_offsets):
+        if cache_cpu:
+            features = _move_features_to_device(features, device)
         topo_data = {"points": [], "pairs": [], "valid": []}
         idx_maps = []
         for x0, y0 in chunk:
@@ -282,6 +308,10 @@ def main():
 
         cv2.imwrite(str(out_dir / "mask" / f"{tile}_road.png"), road_mask)
         cv2.imwrite(str(out_dir / "mask" / f"{tile}_itsc.png"), itsc_mask)
+        # the centreline the graph points
+        thin_mask = thin_road_mask(road_mask, config)
+        if thin_mask is not None:
+            cv2.imwrite(str(out_dir / "mask" / f"{tile}_road_thin.png"), thin_mask)
 
         viz = triage.visualize_image_and_graph(
             rgb, pred_nodes / up_size, pred_edges, up_size,

@@ -1,9 +1,5 @@
-"""Input normalisation, applied **inside the model**.
-``input_scale`` maps ROSA units into the encoder's pretraining units;
-``mean``/``std`` are the encoder's own pretraining statistics
-"""
-
 from geosamroad.dataset.bands import TM_S2L2A_NAMES, TM_S1GRD_NAMES
+
 # SAM RGB stats, for 0-255 pixel values
 SAM_PIXEL_MEAN = [123.675, 116.28, 103.53]
 SAM_PIXEL_STD = [58.395, 57.12, 57.375]
@@ -61,7 +57,7 @@ TM_PRETRAINED_BANDS = {
     'untok_dem@224': ["DEM"],
 }
 
-## Methods to return the mean/std/scale for for each band
+## Methods to return the mean/std/scale for each band
 ## Currently supports enhanced RGB. TODO: have dataset give percentile clip rgb bands. 
 
 def terramind_norm(rgb: bool):
@@ -76,7 +72,7 @@ def terramind_norm(rgb: bool):
         s2_native_names = TM_PRETRAINED_BANDS["untok_sen2l2a@224"]
         s2_mean_map = dict(zip(s2_native_names, v1_pretraining_mean["untok_sen2l2a@224"]))
         s2_std_map = dict(zip(s2_native_names, v1_pretraining_std["untok_sen2l2a@224"]))
-        
+
         s1_native_names = TM_PRETRAINED_BANDS["untok_sen1grd@224"]
         s1_mean_map = dict(zip(s1_native_names, v1_pretraining_mean["untok_sen1grd@224"]))
         s1_std_map = dict(zip(s1_native_names, v1_pretraining_std["untok_sen1grd@224"]))
@@ -84,13 +80,13 @@ def terramind_norm(rgb: bool):
         # Reorder norm stat values
         target_s2_means = [s2_mean_map[band] for band in TM_S2L2A_NAMES]
         target_s2_stds = [s2_std_map[band] for band in TM_S2L2A_NAMES]
-        
+
         target_s1_means = [s1_mean_map[band] for band in TM_S1GRD_NAMES]
         target_s1_stds = [s1_std_map[band] for band in TM_S1GRD_NAMES]
 
         final_means = target_s2_means + target_s1_means
         final_stds = target_s2_stds + target_s1_stds
-        
+
         # S2 scaling is 10000.0, S1 (SAR dB) scaling is 1.0
         final_scales = [10000.0] * len(TM_S2L2A_NAMES) + [1.0] * len(TM_S1GRD_NAMES)
 
@@ -109,18 +105,7 @@ ROSA_BAND_COUNT = 23
 
 
 def rosa_norm(bands):
-    """Frozen ROSA train stats for the complete segmentation models, sliced by
-    1-BASED band index.
-
-    Reproduces exactly what unet_model / SCGN_model saw during their own
-    training: a plain z-score with NO reflectance rescaling, hence
-    ``scale = 1.0``. The values above are float-identical to the ``norm_mean`` /
-    ``norm_std`` of ``/home/kelvin/Documents/ROSADataset/norm_stats.yaml``, which
-    is what those checkpoints were trained with.
-
-    Bands 18-20 (esa/gisa/wsf urban masks) are constant, so their std is 0; the
-    floor mirrors ``dataset/helper.py::apply_norm``.
-    """
+    """Frozen ROSA train stats for unet and sgcn models"""
     if len(ROSA_MEANS) != ROSA_BAND_COUNT or len(ROSA_STDS) != ROSA_BAND_COUNT:
         raise ValueError(
             f"ROSA stats must have {ROSA_BAND_COUNT} entries, got "

@@ -1,4 +1,5 @@
-"""Triage: rank the worst test tiles and renders pred-vs-GT. Requires eval_graphs output
+""" Visualise prediction and ground truth side by side. After inferencer and graph metrics are calculated
+Usage: 
     python -m geosamroad.triage --run-dir save/model_output \
         --dataset-dir <ROSA> --split test --metric apls --worst 20
 """

@@ -2,7 +2,7 @@ from torch import nn
 import segmentation_models_pytorch as smp
 
 class BCEDiceLoss(nn.Module):
-    """``BCE + soft-Dice``, equally weighted."""
+    """BCE and Dice loss"""
 
     def __init__(self):
         super().__init__()
@@ -19,7 +19,7 @@ class BCEDiceLoss(nn.Module):
 
         bce_loss = self.bce(logits, targets)
 
-        # permute to expected shape
+        # reorder to expected shape
         logits_c_first = logits.permute(0, 3, 1, 2)
         targets_c_first = targets.permute(0, 3, 1, 2)
 

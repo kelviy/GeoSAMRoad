@@ -8,7 +8,7 @@ from pydantic import BaseModel
 # defaults are for 4x upsampled resolution
 class GraphLabelGeneratorConfig(BaseModel):
     PATCH_SIZE: int = 512            # model patch edge = crop_size * upscale
-    ROAD_NMS_RADIUS: int = 16         # min spacing between sampled graph points. 16 works for 2.5m
+    ROAD_NMS_RADIUS: int = 16        # min spacing between sampled graph points. 16 works for 2.5m
     TOPO_SAMPLE_NUM: int = 512       # candidate-connection query radius. 512 works for 2.5m
     NEIGHBOR_RADIUS: int = 64        # source points sampled per patch. 64 works well for 2.5m
     MAX_NEIGHBOR_QUERIES: int = 16

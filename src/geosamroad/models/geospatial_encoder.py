@@ -30,7 +30,7 @@ class GeoBackboneEncoder(nn.Module):
         self.backbone = BACKBONE_REGISTRY.build(
             REGISTRY_NAME[version], pretrained=pretrained, img_size=img_size,
             modalities=list(mods), bands=dict(mods),
-            merge_method="mean",  # mean(default) | max | concat (keeps T = (H/16)^2)
+            merge_method="mean",  # mean(default) | max | concat (T = (H/16)^2)
         )
         # Split stack to bands per satellite modality.
         self.slices: OrderedDict[str, slice] = self._channel_slices(mods)
@@ -61,6 +61,6 @@ class GeoBackboneEncoder(nn.Module):
                 f"Token count {t} is not a perfect square; cannot reshape to a "
                 f"square feature map (version={self.version!r})."
             )
-        # [B, T, D] -> [B, D, T] -> [B, D, hw, hw] (row-major token order)
+        # [B, T, D] to [B, D, T] to [B, D, hw, hw]
         self.final_embed = last.transpose(1, 2).reshape(b, d, hw, hw)
         return [self.final_embed]

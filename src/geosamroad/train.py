@@ -1,7 +1,6 @@
-"""Train geosamroad model.
-
+"""
 Usage:
-    python -m geosamroad.train --config src/geosamroad/configs/local/model.yaml
+    python -m geosamroad.train --config src/geosamroad/configs/hpc/<model.yaml>
         --dataset-dir dataset/ROSADataset \
         --sam-ckpt-path checkpoints/sam_vit_b_01ec64.pth \
         --set BATCH_SIZE=2 --set TRAIN_EPOCHS=20

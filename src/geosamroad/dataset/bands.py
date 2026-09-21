@@ -1,4 +1,3 @@
-"""S2-ROSA band and modality layout"""
 from collections import OrderedDict
 
 ## Dataset Band information

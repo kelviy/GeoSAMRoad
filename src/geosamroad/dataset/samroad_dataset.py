@@ -33,14 +33,14 @@ class SamRoadDatasetConfig(RasterDatasetConfig):
     ROAD_NMS_RADIUS: int = 16
     NEIGHBOR_RADIUS: int = 64
     MAX_NEIGHBOR_QUERIES: int = 16
-    ITSC_NMS_RADIUS: int = 8  # not sure, seems to be only used during inference
-    keypoint_buffer_m: float = 10.0  # keypoint disk radius (m) for upscale re-rasterisation
+    ITSC_NMS_RADIUS: int = 8            # not sure, seems to be only used during inference
+    keypoint_buffer_m: float = 10.0     # keypoint disk radius (m) for upscale re-rasterisation
     RGB_INPUT: bool = False
-    rgb_source: str | None = None #    # RGB Band Variant
-    preload_graphs: bool = False     # build and cache all graph generators 
-    # crop size replaces patch_size
-    model_encoder: str = "sam" # sam | terramind | unet - encoder + decoder | sgcn - encoder + decoder
-    # model_encoder should be linked via CLI from the model config and not specified in dataset section of yaml config
+    rgb_source: str | None = None       # RGB Band Variant
+    preload_graphs: bool = False        # build and cache all graph generators before training
+    # patch_size config from SAMRad is calculated from crop size*upsample  
+    model_encoder: str = "sam"          # sam, terramind, unet, sgcn
+    # Model encoder in dataset config is autoset/linked from model config
 
     @model_validator(mode="after")
     def _resolve_bands(self):
@@ -156,11 +156,11 @@ class SAMROAD_Dataset(RasterRoadDataset):
 
     def __getitem__(self, idx):
         raster = super().__getitem__(idx)  # image, mask, crop_x/y, image_idx, rot_k/flip
-        image = raster["image"]             # D4-augmented (if specified)
-        road_mask = raster["mask"].to(torch.float32)  
+        image = raster["image"]
+        road_mask = raster["mask"].to(torch.float32)
         row = self.df.iloc[raster["image_idx"]]
 
-        # Same D4 the base applied (rot90 then flip); absent on non-train items.
+        # Apply same augumentations from raster
         k = raster.get("rot_k", 0)
         flip = raster.get("flip", False)
 
@@ -201,11 +201,8 @@ class SAMROAD_Dataset(RasterRoadDataset):
             "connected": torch.tensor(connected, dtype=torch.bool),
             "valid": torch.tensor(valid, dtype=torch.bool),
         }
-
-        # TODO: Double check this in documentation. Rasterio reads bands in (C, H, W)
-        # Model handles splitting of bands 
+        
         out["image"] = image
-
         return out
 
 

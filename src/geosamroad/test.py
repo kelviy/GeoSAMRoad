@@ -1,6 +1,6 @@
-"""Test-set evaluation for the SAM-Road+ geospatial model.
+"""
 Usage:
-    python -m geosamroad.test --config src/geosamroad/configs/local/model.yaml \
+    python -m geosamroad.test --config src/geosamroad/configs/hpc/<model.yaml> \
         --checkpoint checkpoints/model/best.ckpt
 """
 from argparse import ArgumentParser

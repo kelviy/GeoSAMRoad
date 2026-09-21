@@ -31,11 +31,10 @@ class OriginalNaiveDecoder(nn.Module):
             activation(),
             nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2),
             activation(),
-            # Output 32 channels. TerraTorch will append a 1x1 conv to map 32 -> 2.
             nn.ConvTranspose2d(32, 32, kernel_size=2, stride=2),
             activation()
         )
-        
+
         self.out_channels = 32
 
     def forward(self, x: list[torch.Tensor]) -> torch.Tensor:

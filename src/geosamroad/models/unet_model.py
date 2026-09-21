@@ -4,7 +4,6 @@ CHANNELS = ("keypoint", "road")
 
 def build_model(encoder_name="resnet34", encoder_weights="imagenet",
                 in_channels=12, classes=2):
-    """Plain segmentation-models-pytorch UNet (2 mask channels)."""
     if encoder_weights in (None, "none", "None", ""):
         encoder_weights = None
     return smp.Unet(

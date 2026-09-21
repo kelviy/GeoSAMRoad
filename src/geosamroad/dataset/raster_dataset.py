@@ -37,16 +37,12 @@ FINAL_SPLIT_SOURCES = {
 # Only used during upsampling
 @lru_cache(maxsize=256)
 def _load_graph(path_str):
-    """One tile's road centrelines (native CRS), cached per worker process."""
+    """Cached road vector graphs per image"""
     return gpd.read_parquet(path_str)
 
 
-
 def _graph_mask(graph_path, src, window, out_size, upscale):
-    """ For upscale version.
-
-    Rasterise the tile's buffered centrelines over the crop at output resolution."""
-    
+    """Rasterise the tile's buffered centrelines over the crop at output resolution. For upscale version."""
     out_shape = (out_size, out_size)
     roads = _load_graph(str(graph_path))
     if roads.empty:
@@ -71,23 +67,23 @@ def _graph_mask(graph_path, src, window, out_size, upscale):
 
 
 class RasterDatasetConfig(BaseModel):
-    dataset_dir: str | Path                 # root dataset directory 
-    bands: tuple = RGB                      # geotiff index bands to read
+    dataset_dir: str | Path                     # root dataset directory 
+    bands: tuple = RGB                          # geotiff index bands to read
 
-    train_len_factor: float  = 10.0            # specification of dataset length
-    min_road_density: float = 0.0          # Per-filter of per tile road density filter
-    augment: bool = True                   # d4 flip/rotation augmentation for training
+    train_len_factor: float  = 10.0             # dataset length factor (random augmentations)
+    min_road_density: float = 0.0               # Image level road density filter
+    augment: bool = True                        # d4 flip/rotation augmentation
 
-    crop_size: int = 256                    # random crop size (patch size)
-    upscale: int = 1                        # upscaling factor to random crop
+    crop_size: int = 128                        # patch size for random crop augmentation
+    upscale: int = 2                            # upscaling factor for random crop
 
-    # Resample a random crop if road pixels is lower than threshold. 
+    # Random crop resampling on low/empty road regions
     min_crop_road_px: int = 0
-    max_crop_attempts: int = 20             # give up and keep last after max tries
+    max_crop_attempts: int = 20
 
     normalize: bool = False
-    norm_mean: list[float] | None = None            # frozen dataset stats
-    norm_std: list[float] | None = None             # Note: upscaling would slightly change normalisation
+    norm_mean: list[float] | None = None            # precomputed dataset stats
+    norm_std: list[float] | None = None
 
     final_train: bool = False
 
@@ -95,7 +91,7 @@ class RasterRoadDataset(Dataset):
     """
     Train: Random pixel crops from the 512x512 tiles.
     Eval: Sliding window crops with no overlap.
-    
+
     Length by default is 10 * len(train_tiles)
     """
 
@@ -117,7 +113,7 @@ class RasterRoadDataset(Dataset):
         self.bands = list(self.config.bands)
         self.upscaled_image_size = self.config.crop_size * self.config.upscale
 
-        # Read tiles and optionally filter by road_density
+        # Read list of images in dataset 
         sources = FINAL_SPLIT_SOURCES[self.split] if self.config.final_train else (self.split,)
         df = pd.concat(
             [read_split_csv(self.config.dataset_dir, s) for s in sources],
@@ -156,8 +152,7 @@ class RasterRoadDataset(Dataset):
         return self.length
 
     def _sample_train_crop(self, patch_size, data_dir):
-        """Random train crop; resample empty ones when ``min_crop_road_px`` > 0.
-        """
+        """Random crops during training"""
         thr = self.config.min_crop_road_px
         attempts = self.config.max_crop_attempts if thr > 0 else 1
         for _ in range(attempts):
@@ -169,16 +164,11 @@ class RasterRoadDataset(Dataset):
                 road_px = int((m.read(1, window=Window(x, y, patch_size, patch_size)) > 0).sum())
             if road_px >= thr:
                 return image_idx, x, y, s
-        return image_idx, x, y, s  # give up: keep the last crop
+        return image_idx, x, y, s  # utilise last crop
 
     def __getitem__(self, idx):
         """
-        Random crop and normalise. 
-        - Non-upscaled standard random crops.
-        
-        - Upscaled random crops of images with bicubic interpolation.
-        Graph masks rastered with buffer attribute 
-        """
+        Random crop and normalise. Upscaled (bicubic) random crops of images have road masks re-rastered from road vectors with buffer."""
 
         patch_size = self.config.crop_size
         output = {}
@@ -224,8 +214,7 @@ class RasterRoadDataset(Dataset):
 
         output.update({
             "image": image,
-            "mask": mask.squeeze(0).long(),  # (H, W) class indices for the task
-            # crop information for downstream graph and keypoint cropping
+            "mask": mask.squeeze(0).long(),  # (H, W)
             "image_idx": image_idx,
             "crop_x": int(x),
             "crop_y": int(y),
@@ -251,7 +240,7 @@ class RasterRoadDataModule(pl.LightningDataModule):
         return DataLoader(
             ds,
             batch_size=self.batch_size,
-            shuffle=False,  # randomness is in __getitem__; DDP adds DistributedSampler
+            shuffle=False,
             num_workers=self.num_workers,
             pin_memory=torch.cuda.is_available(),
             persistent_workers=self.num_workers > 0,

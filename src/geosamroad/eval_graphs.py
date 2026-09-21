@@ -17,15 +17,16 @@ from pathlib import Path
 
 import numpy as np
 
+# import topo and apls
 _PKG_DIR = Path(__file__).resolve().parent
 _TOPO_DIR = _PKG_DIR / "metrics" / "topo"
 _APLS_DIR = _PKG_DIR / "metrics" / "apls"
-sys.path.insert(0, str(_TOPO_DIR))  # topo.py does `import graph`, `import showTOPO`
+sys.path.insert(0, str(_TOPO_DIR))
 
-import graph as splfy  # noqa: E402  (metrics/topo/graph.py)
-import topo as topo_mod  # noqa: E402  (metrics/topo/topo.py)
+import graph as splfy
+import topo as topo_mod
 
-from geosamroad.dataset.helper import read_split_csv  # noqa: E402
+from geosamroad.dataset.helper import read_split_csv
 
 NATIVE_M_PER_PX = 10.0
 LAT_TOP_LEFT = 41.0

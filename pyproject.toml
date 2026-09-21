@@ -128,4 +128,4 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/geosamroad"]
+packages = ["src/geosamroad", "src/sentinel2data"]
