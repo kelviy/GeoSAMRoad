@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from sam_road.utils import load_config
-from sam_road.dataset import SatMapDataset, graph_collate_fn
-from sam_road.model import SAMRoad
+from geosamroad.sam_road.utils import load_config
+from geosamroad.sam_road.dataset import SatMapDataset, graph_collate_fn
+from geosamroad.sam_road.model import SAMRoad
 
 import wandb
 

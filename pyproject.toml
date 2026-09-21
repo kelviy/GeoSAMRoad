@@ -3,11 +3,17 @@ name = "geosamroad"
 version = "0.1.0"
 description = "Repository for GeoSAMRoad data and deployment code"
 readme = "README.md"
-requires-python = ">=3.12"
+# Kept at 3.11 so InstaGeo (requires-python ">=3.11,<3.13") can depend on this
+# package: uv resolves across the consumer's whole range, so a 3.12 floor here
+# makes the resolution unsatisfiable on 3.11.
+requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.24.0",
     "pyyaml",
-    "pandas>=3.0.2",
+    # Only read_csv/read_parquet/Series/concat are used, so keep the floor low:
+    # a >=3.0 pin forces a pandas major upgrade on every consumer (InstaGeo is
+    # on 2.x).
+    "pandas>=2.0.0",
 ]
 
 [project.optional-dependencies]

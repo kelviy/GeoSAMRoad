@@ -7,7 +7,7 @@ import tcod
 from sklearn.neighbors import KDTree
 from skimage.draw import line
 import networkx as nx
-from sam_road.graph_utils import nms_points
+from geosamroad.sam_road.graph_utils import nms_points
 
 
 IMAGE_SIZE = 2048
