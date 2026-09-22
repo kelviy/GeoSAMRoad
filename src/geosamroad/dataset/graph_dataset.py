@@ -5,13 +5,48 @@ import rtree
 import scipy
 from pydantic import BaseModel
 
+# The constants below are calibrated for 4x upsampled ROSA, i.e. 2.5m/px with a
+# 512px patch. At that geometry they coincide with the sam_road cityscale values.
+REFERENCE_UPSCALE = 4
+
+
+def graph_constants_for_upscale(upscale: int) -> dict:
+    """Scale the 2.5m reference constants to another output resolution.
+
+    Not everything divides by the resolution ratio:
+      - nms / neighbour / interesting radii are pixel lengths, so they scale;
+      - TOPO_SAMPLE_NUM is points per patch, so it scales with area;
+      - SUBDIVIDE_RESOLUTION is the spacing ``bfs_with_conditions`` divides the
+        neighbour radius by, and must stay an exact divisor of it;
+      - CROSSOVER_EXCLUDE_RADIUS is 4 in upstream sam_road and in this repo's
+        5m setting alike, so it is treated as resolution-independent;
+      - NOISE_SCALE is fixed at 1px at every resolution.
+    At upscale=2 this reproduces the values that were previously hardcoded.
+    """
+    ratio = upscale / REFERENCE_UPSCALE
+    return {
+        "ROAD_NMS_RADIUS": max(1, round(16 * ratio)),
+        "NEIGHBOR_RADIUS": max(1, round(64 * ratio)),
+        "TOPO_SAMPLE_NUM": max(2, round(512 * ratio * ratio)),
+        "MAX_NEIGHBOR_QUERIES": 16,
+        "SUBDIVIDE_RESOLUTION": 4,
+        "CROSSOVER_EXCLUDE_RADIUS": 4,
+        "INTERESTING_RADIUS": max(1, round(32 * ratio)),
+        "NOISE_SCALE": 1.0,
+    }
+
+
 # defaults are for 4x upsampled resolution
 class GraphLabelGeneratorConfig(BaseModel):
     PATCH_SIZE: int = 512            # model patch edge = crop_size * upscale
     ROAD_NMS_RADIUS: int = 16        # min spacing between sampled graph points. 16 works for 2.5m
-    TOPO_SAMPLE_NUM: int = 512       # candidate-connection query radius. 512 works for 2.5m
-    NEIGHBOR_RADIUS: int = 64        # source points sampled per patch. 64 works well for 2.5m
+    TOPO_SAMPLE_NUM: int = 512       # source points sampled per patch. 512 works for 2.5m
+    NEIGHBOR_RADIUS: int = 64        # candidate-connection query radius. 64 works well for 2.5m
     MAX_NEIGHBOR_QUERIES: int = 16
+    SUBDIVIDE_RESOLUTION: int = 4    # px between subdivided graph points; must divide NEIGHBOR_RADIUS
+    CROSSOVER_EXCLUDE_RADIUS: int = 4  # px around crossovers that are never sampled. 4 for 2.5m
+    INTERESTING_RADIUS: int = 32     # px around itsc/crossovers that are sampled 9x more. 32 for 2.5m
+    NOISE_SCALE: float = 1.0         # px of gaussian jitter on label points, at every resolution
 
 class GraphLabelGenerator():
     def __init__(self, config: GraphLabelGeneratorConfig, full_graph, coord_transform):
@@ -23,8 +58,7 @@ class GraphLabelGenerator():
         # find crossover points, we'll avoid predicting these as keypoints
         self.crossover_points = graph_utils.find_crossover_points(self.full_graph_origin)
         # subdivide version
-        # TODO: check proper resolution
-        self.subdivide_resolution = 4 # 4 for 2.5m
+        self.subdivide_resolution = config.SUBDIVIDE_RESOLUTION
         self.full_graph_subdivide = graph_utils.subdivide_graph(self.full_graph_origin, self.subdivide_resolution)
         # np array, maybe faster
         self.subdivide_points = np.array(self.full_graph_subdivide.vs['point'])
@@ -39,7 +73,7 @@ class GraphLabelGenerator():
         self.graph_kdtree = scipy.spatial.KDTree(self.subdivide_points)
 
         # pre-exclude points near crossover points
-        crossover_exclude_radius = 4 # 4 for 2.5m
+        crossover_exclude_radius = config.CROSSOVER_EXCLUDE_RADIUS
         exclude_indices = set()
         for p in self.crossover_points:
             nearby_indices = self.graph_kdtree.query_ball_point(p, crossover_exclude_radius)
@@ -58,7 +92,7 @@ class GraphLabelGenerator():
         # Points near crossover and intersections are interesting.
         # they will be more frequently sampled
         interesting_indices = set()
-        interesting_radius = 16 # 32 for 2.5m
+        interesting_radius = config.INTERESTING_RADIUS
         # near itsc
         for i in itsc_indices:
             p = self.subdivide_points[i]
@@ -175,7 +209,7 @@ class GraphLabelGenerator():
             nmsed_points[:, 0] = self.config.PATCH_SIZE - nmsed_points[:, 0]
 
         # Add noise
-        noise_scale = 1.0  # pixels
+        noise_scale = self.config.NOISE_SCALE  # pixels
         nmsed_points += np.random.normal(0.0, noise_scale, size=nmsed_points.shape)
 
         return nmsed_points, samples

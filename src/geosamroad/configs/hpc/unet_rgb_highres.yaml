@@ -1,0 +1,100 @@
+# UNet + high-res aerial RGB (high_res_rgb/, 2.5m/px), 512x512 patches.
+#
+# 4x the resolution of unet_rgb.yaml, same 1280m ground footprint per patch:
+#   unet_rgb.yaml  crop 128 native px @10m -> bicubic x2 -> 256px @5m
+#   this config    crop 128 native px @10m -> read as-is  -> 512px @2.5m
+# The imagery is NOT resampled (high_res_rgb/ is already 2048px per 512px tile);
+# only the road/keypoint labels are re-rasterised at the finer resolution.
+#
+# At 2.5m/512px the topo geometry matches sam_road's cityscale setting, so the
+# graph-label constants below are the original sam_road values rather than the
+# halved ones unet_rgb.yaml uses for 5m.
+DATASET: ROSA
+DATASET_DIR: /scratch/user/data/ROSADataset
+
+# ======================= road segmentation =============
+SEG_ENCODER_NAME: resnet34
+SEG_ENCODER_WEIGHTS: imagenet
+
+# ======================= encoder =======================
+ENCODER_MODEL: unet
+RGB_INPUT: true
+RGB_SOURCE: highres          # read high_res_rgb/ instead of bands of imagery/
+PRETRAINED: true
+SAM_VERSION: vit_b
+SAM_CKPT_PATH: null
+
+# ======================= input geometry ================
+CROP_SIZE: 128               # native 10m px; the crop read is 128*UPSCALE high-res px
+UPSCALE: 4                   # high_res_rgb/ is 4x the native tile -> PATCH_SIZE 512
+
+# ======================= data ==========================
+AUGMENT: true
+TRAIN_LEN_FACTOR: 10.0
+MIN_ROAD_DENSITY: 0.0
+# Unchanged from unet_rgb.yaml on purpose: this is counted on the 10m mask over the
+# same 128px native crop, so it is already resolution-independent.
+MIN_CROP_ROAD_PX: 50
+MAX_CROP_ATTEMPTS: 20
+PRELOAD_GRAPHS: true        # cache graphs
+KEYPOINT_BUFFER_M: 10.0     # metres, so also unchanged -> 4px disks at 2.5m
+# Tiles near the edge of the country are zero-padded; the vector labels still
+# cover the padding, so drop those labels and resample crops that are mostly black.
+MASK_NODATA_LABELS: true
+MAX_CROP_NODATA_FRAC: 0.5
+
+# ======================= training ======================
+# 512px patches are 4x the pixels of unet_rgb.yaml, so the batch is 4x smaller
+# and accumulated back up to an effective 16.
+BATCH_SIZE: 4
+ACCUMULATE_GRAD_BATCHES: 4
+DATA_WORKER_NUM: 4
+TRAIN_EPOCHS: 100
+BASE_LR: 1.0e-3
+ENCODER_LR_FACTOR: 0.1
+WEIGHT_DECAY: 0.0
+LR_MILESTONES: [70,]
+LR_GAMMA: 0.1
+PRECISION: 32
+GRADIENT_CLIP_VAL: 1.0
+SEED: 42
+
+# ======================= loss ==========================
+MASK_LOSS: bce_dice
+
+# ======================= TopoNet =======================
+# sam_road cityscale values: at 2.5m/512px the pixel geometry lines up with theirs
+TOPO_SAMPLE_NUM: 512
+TOPONET_VERSION: normal
+ROAD_NMS_RADIUS: 16
+NEIGHBOR_RADIUS: 64
+MAX_NEIGHBOR_QUERIES: 16
+ITSC_NMS_RADIUS: 8
+# graph-label constants; omit these and they are derived from UPSCALE
+SUBDIVIDE_RESOLUTION: 4      # must divide NEIGHBOR_RADIUS; not resolution-scaled
+CROSSOVER_EXCLUDE_RADIUS: 4
+INTERESTING_RADIUS: 32
+NOISE_SCALE: 1.0             # label jitter stays 1px at every resolution
+
+# ======================= logging =======================
+RUN_NAME: unet_rgb_highres
+WANDB_PROJECT: geosamroad
+WANDB_ENTITY: null
+WANDB_MODE: null
+CHECKPOINT_DIR: /scratch/user/output/unet_rgb_highres_geosamroad
+LOG_EVERY_N_STEPS: 10
+SAVE_TOP_K: 1
+MONITOR: road_iou
+MONITOR_MODE: max
+
+# ======================= inference =====================
+# placeholders -- overwritten by the val threshold sweep (test.py --split val)
+INFER_BATCH_SIZE: 4
+INFER_PATCHES_PER_EDGE: 8    # 512px patches over a 2048px tile; 4 is the minimum cover
+ITSC_THRESHOLD: 0.3255
+ROAD_THRESHOLD: 0.3647
+TOPO_THRESHOLD: 0.5020
+
+# ======================= skeletonisation =====================
+THIN_BEFORE_NMS: true
+THIN_HOLE_SIZE: 64           # pixel area, so 4x the 16 used at 5m

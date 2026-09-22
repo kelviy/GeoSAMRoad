@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 
-from geosamroad.dataset.bands import resolve_input
-from geosamroad.models.normalization import rosa_norm
+from geosamroad.dataset.bands import HIGH_RES_SOURCE, resolve_input
+from geosamroad.models.normalization import high_res_rgb_norm, rosa_norm
 
 MASK_CLASSES = 2  # (keypoint, road)
 SGCN_FEATURE_MAPS = ("gcn_out", "up1", "up2", "up3")
@@ -11,8 +11,12 @@ class RoadSegmentationModel(nn.Module):
     def __init__(self, config, topo_feature_dim_fn, build_net):
         super().__init__()
         self.config = config
-        bands = resolve_input(str(config.ENCODER_MODEL), bool(config.RGB_INPUT), "enhanced")
-        mean, std, scale = rosa_norm(bands)
+        rgb_source = str(config.get("RGB_SOURCE") or "enhanced")
+        bands = resolve_input(str(config.ENCODER_MODEL), bool(config.RGB_INPUT), rgb_source)
+        # the high-res aerial tiles are their own raster with their own stats,
+        # not bands of the 23-band ROSA stack
+        mean, std, scale = (high_res_rgb_norm() if rgb_source == HIGH_RES_SOURCE
+                            else rosa_norm(bands))
         self.bands = tuple(bands)
         self.in_channels = len(bands)
         self.net = build_net(self.in_channels)

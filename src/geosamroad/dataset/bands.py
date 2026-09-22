@@ -17,6 +17,12 @@ S2_20M = (5, 6, 7, 8, 9, 10)    # B5, B6, B7, B8A, B11, B12
 S2_SAR = (11, 12, 13, 14)       # VV/VH ascending/descending
 ENHANCED_RGB = (21, 22, 23)     # appended CLAHE+gamma enhanced RGB
 
+# high_res_rgb/ tiles are their own 3-band uint8 geotiff (NGI aerial, 2.5m),
+# not bands of the 23-band imagery/ stack, so the indices restart at 1.
+HIGH_RES_RGB = (1, 2, 3)        # red, green, blue
+HIGH_RES_SOURCE = "highres"
+RGB_SOURCES = ("raw", "enhanced", HIGH_RES_SOURCE)
+
 
 def written_band_names(*, version=2):
     if version == 2:
@@ -50,8 +56,12 @@ COMPLETE_SEG_ENCODERS = ("unet", "sgcn")
 
 def resolve_input(encoder: str, rgb: bool, rgb_source: str = "enhanced"):
     """Dataset input specification"""
-    if rgb_source not in ("raw", "enhanced"):
-        raise ValueError(f"rgb_source must be 'raw' or 'enhanced', got {rgb_source!r}")
+    if rgb_source not in RGB_SOURCES:
+        raise ValueError(f"rgb_source must be one of {RGB_SOURCES}, got {rgb_source!r}")
+    if rgb_source == HIGH_RES_SOURCE:
+        if not rgb:
+            raise ValueError("rgb_source 'highres' only provides RGB; set RGB_INPUT: true")
+        return HIGH_RES_RGB
     rgb_idx = ENHANCED_RGB if rgb_source == "enhanced" else RGB
 
     if encoder == "sam":
@@ -77,3 +87,14 @@ def encoder_modalities(encoder: str, rgb: bool) -> "OrderedDict[str, list[str]]"
         idx = ENHANCED_RGB if rgb else ROSA_SEG_BANDS
         return OrderedDict(image=[ROSA_BANDS[b - 1] for b in idx])
     raise ValueError(f"No band-name mapping for encoder: {encoder}")
+
+
+def high_res_path(image_path) -> str:
+    """imagery/ tile path -> the matching high_res_rgb/ tile path."""
+    path = str(image_path)
+    if "/imagery/" not in path:
+        raise ValueError(
+            f"cannot derive a high_res_rgb path from {path!r}: expected an "
+            f"'<split>/imagery/<tile>.tif' image_path in the split CSV"
+        )
+    return path.replace("/imagery/", "/high_res_rgb/")

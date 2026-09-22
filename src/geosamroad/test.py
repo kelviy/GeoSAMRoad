@@ -2,6 +2,9 @@
 Usage:
     python -m geosamroad.test --config src/geosamroad/configs/hpc/<model.yaml> \
         --checkpoint checkpoints/model/best.ckpt
+
+Sweep the ITSC/ROAD/TOPO thresholds on val rather than test:
+    python -m geosamroad.test --config ... --checkpoint ... --split val
 """
 from argparse import ArgumentParser
 
@@ -35,6 +38,8 @@ def parse_args():
                         help="keep at 1: >1 duplicates padded samples into the metrics")
     parser.add_argument("--dev-run", "--dev_run", action="store_true",
                         help="evaluate on 4 tiles only (pipeline check)")
+    parser.add_argument("--split", default="test", choices=["train", "val", "test"],
+                        help="split to run the test loop (and threshold sweep) over")
     return parser.parse_args()
 
 
@@ -61,6 +66,11 @@ def main():
         num_workers=int(config.DATA_WORKER_NUM),
         dev_run=args.dev_run,
     )
+    if args.split != "test":
+        # the PR-curve threshold sweep lives in test_step, so point it at another split
+        print(f"###### Running the test loop (threshold sweep) on the "
+              f"{args.split} split ######")
+        datamodule.test_dataloader = lambda: datamodule._dataloader(args.split)
 
     trainer = pl.Trainer(
         accelerator=args.accelerator,

@@ -1,0 +1,24 @@
+# Kaggle variant of configs/hpc/unet_rgb_highres.yaml.
+#
+# Same model and geometry (512x512 patches at 2.5m from high_res_rgb/, no image
+# resampling); only the paths, batch size and checkpointing differ.
+#
+# Kaggle sessions are capped at ~12h, which is less than a 100-epoch run, so
+# SAVE_TOP_K keeps the monitored best and Lightning's last.ckpt lets the next
+# session resume. See training/highres-kaggle.ipynb.
+_BASE_: ../hpc/unet_rgb_highres.yaml
+
+# resolve_dataset.py rewrites this; the notebook passes it explicitly too
+DATASET_DIR: /kaggle/working/dataset
+
+# ======================= training ======================
+# A 16GB P100/T4 fits bs=16 at 512px (~10GB); drop to 8 with ACCUMULATE=2 if the
+# session hands you a smaller card.
+BATCH_SIZE: 16
+ACCUMULATE_GRAD_BATCHES: 1
+DATA_WORKER_NUM: 2          # Kaggle gives 4 vCPU; 2 workers keeps RAM for the graph cache
+TRAIN_EPOCHS: 100
+
+# ======================= logging =======================
+RUN_NAME: unet_rgb_highres_kaggle
+CHECKPOINT_DIR: /kaggle/working/checkpoints

@@ -104,6 +104,17 @@ ROSA_STDS=[0.0737832, 0.0416436, 0.0296637, 0.0688163, 0.07177, 0.0614309, 0.065
 ROSA_BAND_COUNT = 23
 
 
+# high_res_rgb/ NGI aerial tiles, uint8 0-255. Frozen train-split stats over the
+# 883 train tiles with zero-padded pixels excluded.
+HIGH_RES_RGB_MEANS = [127.1746, 121.7662, 114.0201]
+HIGH_RES_RGB_STDS = [35.6843, 28.6791, 24.8223]
+
+
+def high_res_rgb_norm():
+    """Frozen train stats for the high_res_rgb tiles (already 0-255, so scale 1)."""
+    return list(HIGH_RES_RGB_MEANS), list(HIGH_RES_RGB_STDS), 1.0
+
+
 def rosa_norm(bands):
     """Frozen ROSA train stats for unet and sgcn models"""
     if len(ROSA_MEANS) != ROSA_BAND_COUNT or len(ROSA_STDS) != ROSA_BAND_COUNT:

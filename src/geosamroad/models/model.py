@@ -510,10 +510,27 @@ class GeoSAMRoad(pl.LightningModule):
             best_recall = recall[best_threshold_index]
             best_f1 = f1_scores[best_threshold_index]
             print(f'Best threshold {best_threshold}, P={best_precision} R={best_recall} F1={best_f1}')
+            return {'threshold': float(best_threshold), 'precision': float(best_precision),
+                    'recall': float(best_recall), 'f1': float(best_f1)}
         print('======= Finding best thresholds ======')
-        find_best_threshold(self.keypoint_pr_curve, 'keypoint')
-        find_best_threshold(self.road_pr_curve, 'road')
-        find_best_threshold(self.topo_pr_curve, 'topo')
+        self.best_thresholds = {
+            'keypoint': find_best_threshold(self.keypoint_pr_curve, 'keypoint'),
+            'road': find_best_threshold(self.road_pr_curve, 'road'),
+            'topo': find_best_threshold(self.topo_pr_curve, 'topo'),
+        }
+        # write the sweep result so inference can be configured without parsing stdout
+        out_path = self.config.get("THRESHOLD_SWEEP_OUT")
+        if out_path:
+            import yaml as _yaml
+            payload = {
+                'ITSC_THRESHOLD': self.best_thresholds['keypoint']['threshold'],
+                'ROAD_THRESHOLD': self.best_thresholds['road']['threshold'],
+                'TOPO_THRESHOLD': self.best_thresholds['topo']['threshold'],
+                'sweep_detail': self.best_thresholds,
+            }
+            with open(out_path, 'w') as f:
+                _yaml.dump(payload, f, sort_keys=False)
+            print(f'Wrote best thresholds to {out_path}')
 
     def configure_optimizers(self):
         param_dicts = []

@@ -6,6 +6,7 @@ Usage:
         --set BATCH_SIZE=2 --set TRAIN_EPOCHS=20
 """
 import os
+import time
 from argparse import ArgumentParser
 import lightning.pytorch as pl
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
@@ -102,6 +103,39 @@ def build_logger(config):
     )
 
 
+class SessionTimeLimit(pl.Callback):
+    """Stop the fit after `seconds` of wall time in *this* run.
+
+    Deliberately not ``Trainer(max_time=...)``: Lightning's Timer persists its
+    elapsed time into the checkpoint and restores it as an offset, so a resumed
+    session would already be over budget and stop after zero epochs. A
+    capped-session platform (Kaggle's ~12h) needs a fresh budget each time.
+
+    Checked at epoch end so validation and checkpointing still run, which keeps
+    last.ckpt on a clean epoch boundary for the next --resume.
+    """
+
+    def __init__(self, seconds):
+        self.seconds = float(seconds)
+        self.start = None
+
+    def on_train_start(self, trainer, pl_module):
+        self.start = time.monotonic()
+        print(f"###### session limited to {self.seconds / 3600:.2f}h of training; "
+              f"it stops at the first epoch boundary past that, resume with "
+              f"--resume <checkpoint_dir>/last.ckpt ######")
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        if self.start is None or trainer.should_stop:
+            return
+        elapsed = time.monotonic() - self.start
+        if elapsed >= self.seconds:
+            print(f"###### session time limit reached ({elapsed / 3600:.2f}h) at "
+                  f"epoch {trainer.current_epoch}; stopping so last.ckpt is complete "
+                  f"######")
+            trainer.should_stop = True
+
+
 def build_callbacks(config, with_logger=True):
     """ Checkpointing callback"""
     save_top_k = int(config.get("SAVE_TOP_K", 1))
@@ -141,6 +175,10 @@ def fit(config, *, logger, accelerator="auto", devices="auto", resume="",
     strategy = ("ddp_find_unused_parameters_true" # SGCN has unused parameters
                 if str(config.ENCODER_MODEL).lower() == "sgcn" and not single_device
                 else "auto")
+
+    max_hours = config.get("MAX_TRAIN_HOURS") or 0
+    if max_hours:
+        callbacks.append(SessionTimeLimit(float(max_hours) * 3600.0))
 
     trainer = pl.Trainer(
         accelerator=accelerator,

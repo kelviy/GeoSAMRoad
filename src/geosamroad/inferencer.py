@@ -26,7 +26,7 @@ from skimage.morphology import remove_small_holes, remove_small_objects, skeleto
 from geosamroad.sam_road import graph_extraction, graph_utils
 
 from geosamroad import triage
-from geosamroad.dataset.bands import ENHANCED_RGB
+from geosamroad.dataset.bands import ENHANCED_RGB, HIGH_RES_SOURCE, high_res_path
 from geosamroad.dataset.helper import (
     read_split_csv,
     read_upsampled_window,
@@ -62,6 +62,14 @@ def parse_args():
     parser.add_argument("--max-tiles", type=int, default=0,
                         help="stop after N tiles (0 = whole split); pipeline debug")
     return parser.parse_args()
+
+
+def _drop_missing_high_res(df, data_dir):
+    """Skip tiles with no high_res_rgb/ counterpart, matching the training filter."""
+    present = df["image_path"].map(lambda p: (data_dir / high_res_path(p)).exists())
+    if not present.all():
+        print(f"Skipping {int((~present).sum())}/{len(df)} tiles with no high_res_rgb tile")
+    return df[present]
 
 
 def pick_device(name):
@@ -283,22 +291,32 @@ def main():
         df = df.head(args.max_tiles)
     data_dir = Path(config.DATASET_DIR)
 
+    high_res = str(config.get("RGB_SOURCE") or "") == HIGH_RES_SOURCE
+    if high_res:
+        df = _drop_missing_high_res(df, data_dir)
+
     total_seconds = 0.0
     for row in df.itertuples(index=False):
         tile = Path(row.image_path).stem
         print(f"Processing {tile}")
-        win = Window(0, 0, NATIVE_TILE_PX, NATIVE_TILE_PX)
-        with rasterio.open(data_dir / row.image_path) as src:
-            if upscale > 1:
-                img = read_upsampled_window(src, list(ds_config.bands), win, up_size)
-                rgb = read_upsampled_window(src, list(ENHANCED_RGB), win, up_size)
-            else:
-                img = read_window(src, list(ds_config.bands), win)
-                rgb = read_window(src, list(ENHANCED_RGB), win)
+        if high_res:
+            # already at up_size px / 2.5m, so read the whole tile as-is
+            hr_win = Window(0, 0, up_size, up_size)
+            with rasterio.open(data_dir / high_res_path(row.image_path)) as src:
+                img = read_window(src, list(ds_config.bands), hr_win)
+            rgb = img.transpose(1, 2, 0).astype(np.uint8)   # already 0-255
+        else:
+            win = Window(0, 0, NATIVE_TILE_PX, NATIVE_TILE_PX)
+            with rasterio.open(data_dir / row.image_path) as src:
+                if upscale > 1:
+                    img = read_upsampled_window(src, list(ds_config.bands), win, up_size)
+                    rgb = read_upsampled_window(src, list(ENHANCED_RGB), win, up_size)
+                else:
+                    img = read_window(src, list(ds_config.bands), win)
+                    rgb = read_window(src, list(ENHANCED_RGB), win)
+            # Convert to rgb
+            rgb = (np.clip(rgb, 0.0, 1.0).transpose(1, 2, 0) * 255).astype(np.uint8)
         image = torch.from_numpy(np.ascontiguousarray(img))
-
-        # Convert to rgb
-        rgb = (np.clip(rgb, 0.0, 1.0).transpose(1, 2, 0) * 255).astype(np.uint8)
 
         start = time.time()
         pred_nodes, pred_edges, itsc_mask, road_mask = infer_one_tile(

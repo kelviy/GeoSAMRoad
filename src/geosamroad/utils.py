@@ -3,6 +3,12 @@ from datetime import datetime
 import yaml
 from addict import Dict
 
+from geosamroad.dataset.bands import HIGH_RES_SOURCE, RGB_SOURCES
+from geosamroad.dataset.graph_dataset import graph_constants_for_upscale
+
+# high_res_rgb/ tiles are 2048px for a 512px native tile
+HIGH_RES_UPSCALE = 4
+
 
 def _load_yaml_with_base(path):
     with open(path) as file:
@@ -56,6 +62,19 @@ def finalize_config(config):
         )
     config.PATCH_SIZE = int(config.CROP_SIZE) * int(config.UPSCALE)
 
+    rgb_source = config.get("RGB_SOURCE") or "enhanced"
+    if rgb_source not in RGB_SOURCES:
+        raise ValueError(f"RGB_SOURCE must be one of {RGB_SOURCES}, got {rgb_source!r}")
+    if rgb_source == HIGH_RES_SOURCE:
+        if not config.get("RGB_INPUT", False):
+            raise ValueError("RGB_SOURCE: highres reads 3-band aerial tiles; set RGB_INPUT: true")
+        if int(config.UPSCALE) != HIGH_RES_UPSCALE:
+            raise ValueError(
+                f"RGB_SOURCE: highres needs UPSCALE={HIGH_RES_UPSCALE} (high_res_rgb/ is "
+                f"{HIGH_RES_UPSCALE}x the 512px native tile, i.e. 2.5m/px); got "
+                f"UPSCALE={config.UPSCALE}"
+            )
+
     encoder = str(config.get("ENCODER_MODEL") or "").lower()
     if encoder not in ENCODER_MODELS:
         raise ValueError(
@@ -77,6 +96,13 @@ def finalize_config(config):
 def build_dataset_config(config):
     from geosamroad.dataset.samroad_dataset import SamRoadDatasetConfig
 
+    graph_defaults = graph_constants_for_upscale(int(config.UPSCALE))
+
+    def graph_const(key):
+        """YAML value if given, else the value scaled from the 2.5m reference."""
+        value = config.get(key)
+        return graph_defaults[key] if value is None or value == {} else value
+
     return SamRoadDatasetConfig(
         dataset_dir=config.DATASET_DIR,
         model_encoder=str(config.ENCODER_MODEL),
@@ -89,6 +115,8 @@ def build_dataset_config(config):
         min_road_density=float(config.MIN_ROAD_DENSITY),
         min_crop_road_px=int(config.MIN_CROP_ROAD_PX),
         max_crop_attempts=int(config.MAX_CROP_ATTEMPTS),
+        max_crop_nodata_frac=float(config.get("MAX_CROP_NODATA_FRAC", 1.0)),
+        mask_nodata_labels=bool(config.get("MASK_NODATA_LABELS", True)),
         preload_graphs=bool(config.PRELOAD_GRAPHS),
         final_train=bool(config.get("FINAL_TRAIN", False)),
         keypoint_buffer_m=float(config.KEYPOINT_BUFFER_M),
@@ -98,6 +126,10 @@ def build_dataset_config(config):
         NEIGHBOR_RADIUS=int(config.NEIGHBOR_RADIUS),
         MAX_NEIGHBOR_QUERIES=int(config.MAX_NEIGHBOR_QUERIES),
         ITSC_NMS_RADIUS=int(config.ITSC_NMS_RADIUS),
+        SUBDIVIDE_RESOLUTION=int(graph_const("SUBDIVIDE_RESOLUTION")),
+        CROSSOVER_EXCLUDE_RADIUS=int(graph_const("CROSSOVER_EXCLUDE_RADIUS")),
+        INTERESTING_RADIUS=int(graph_const("INTERESTING_RADIUS")),
+        NOISE_SCALE=float(graph_const("NOISE_SCALE")),
     )
 
 

@@ -21,6 +21,7 @@ from geosamroad.dataset.graph_dataset import (
     GraphLabelGeneratorConfig,
     graph_collate_fn,
 )
+from geosamroad.dataset.bands import HIGH_RES_SOURCE
 from geosamroad.dataset.helper import read_window
 from sentinel2data.generator.artifacts import BORDER_EPS
 
@@ -34,9 +35,12 @@ class SamRoadDatasetConfig(RasterDatasetConfig):
     NEIGHBOR_RADIUS: int = 64
     MAX_NEIGHBOR_QUERIES: int = 16
     ITSC_NMS_RADIUS: int = 8            # not sure, seems to be only used during inference
+    SUBDIVIDE_RESOLUTION: int = 4       # graph label constants, see graph_dataset
+    CROSSOVER_EXCLUDE_RADIUS: int = 4
+    INTERESTING_RADIUS: int = 32
+    NOISE_SCALE: float = 1.0
     keypoint_buffer_m: float = 10.0     # keypoint disk radius (m) for upscale re-rasterisation
     RGB_INPUT: bool = False
-    rgb_source: str | None = None       # RGB Band Variant
     preload_graphs: bool = False        # build and cache all graph generators before training
     # patch_size config from SAMRad is calculated from crop size*upsample  
     model_encoder: str = "sam"          # sam, terramind, unet, sgcn
@@ -100,6 +104,10 @@ class SAMROAD_Dataset(RasterRoadDataset):
             NEIGHBOR_RADIUS=config.NEIGHBOR_RADIUS,
             TOPO_SAMPLE_NUM=config.TOPO_SAMPLE_NUM,
             MAX_NEIGHBOR_QUERIES=config.MAX_NEIGHBOR_QUERIES,
+            SUBDIVIDE_RESOLUTION=config.SUBDIVIDE_RESOLUTION,
+            CROSSOVER_EXCLUDE_RADIUS=config.CROSSOVER_EXCLUDE_RADIUS,
+            INTERESTING_RADIUS=config.INTERESTING_RADIUS,
+            NOISE_SCALE=config.NOISE_SCALE,
         )
         self.coord_transform = _identity_coords
         self._gen_cache: dict = {}
@@ -183,6 +191,9 @@ class SAMROAD_Dataset(RasterRoadDataset):
             kp = np.rot90(kp, k, axes=(0, 1))
         if flip:
             kp = np.flip(kp, axis=1)
+        # same treatment as the road mask: no keypoint labels over zero-padded imagery
+        if self.config.mask_nodata_labels:
+            kp = np.where(raster["nodata"].numpy(), 0.0, kp).astype("float32", copy=False)
         keypoint_mask = torch.from_numpy(np.ascontiguousarray(kp))
 
         # Graph topo labels
