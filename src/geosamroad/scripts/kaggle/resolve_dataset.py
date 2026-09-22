@@ -26,26 +26,27 @@ REQUIRED_SUBDIRS = ("high_res_rgb", "masks_graph", "mask_adj_graphs", "masks_ras
 OPTIONAL_SUBDIRS = ("imagery", "mask_keypoints")
 
 
-def candidate_roots(search_root: Path, max_depth: int = 3):
-    """Directories under the mounts that could be a dataset root, shallowest first.
+# How deep under the mount root a dataset root may sit. Kaggle's "Add Input"
+# mounts at /kaggle/input/<slug>/, so ROSADataset/ lands at depth 2; a kagglehub
+# cache layout (datasets/<owner>/<name>/versions/<n>/ROSADataset) reaches depth 5.
+MAX_SEARCH_DEPTH = 6
 
-    Shallowest-first matters: a dataset uploaded as ROSADataset/train/... and one
-    uploaded as train/... both resolve, and the outermost match wins.
+
+def find_provider(search_root: Path, relative: str, max_depth: int = MAX_SEARCH_DEPTH):
+    """Shallowest directory under `search_root` that contains `relative`.
+
+    Globs for the marker itself rather than enumerating every directory, so the
+    walk only descends path components that can match and never lists the
+    thousands of tiles inside a split folder.
     """
-    if not search_root.is_dir():
-        return []
-    roots = [search_root]
-    for depth in range(1, max_depth + 1):
-        roots.extend(p for p in sorted(search_root.glob("/".join(["*"] * depth)))
-                     if p.is_dir())
-    return roots
-
-
-def find_provider(roots, relative):
-    """First root that contains `relative`."""
-    for root in roots:
-        if (root / relative).is_dir() or (root / relative).is_file():
-            return root
+    depth_of_relative = len(Path(relative).parts)
+    for depth in range(max_depth + 1):
+        prefix = "/".join(["*"] * depth)
+        pattern = f"{prefix}/{relative}" if prefix else relative
+        hits = sorted(search_root.glob(pattern))
+        if hits:
+            # strip the relative part back off to get the dataset root
+            return hits[0].parents[depth_of_relative - 1]
     return None
 
 
@@ -58,17 +59,19 @@ def main():
                     help="fail unless every split has high_res_rgb")
     args = ap.parse_args()
 
-    roots = candidate_roots(Path(args.input_root))
-    if not roots:
-        sys.exit(f"ERROR: nothing mounted under {args.input_root}. "
-                 f"Attach the dataset to the notebook (Add Input).")
+    mounts = Path(args.input_root)
+    if not mounts.is_dir():
+        sys.exit(f"ERROR: {mounts} does not exist. Attach the dataset to the "
+                 f"notebook (Add Input), or pass --input-root.")
 
-    splits_root = find_provider(roots, "splits/train.csv")
+    splits_root = find_provider(mounts, "splits/train.csv")
     if splits_root is None:
-        print("Mounted directories searched:")
-        for r in roots[:40]:
-            print("   ", r)
-        sys.exit("ERROR: no mounted dataset contains splits/train.csv. "
+        print(f"Searched {mounts} to depth {MAX_SEARCH_DEPTH}; what is there:")
+        for depth in (1, 2, 3):
+            for p in sorted(mounts.glob("/".join(["*"] * depth)))[:15]:
+                if p.is_dir():
+                    print("   ", p)
+        sys.exit("\nERROR: no mounted dataset contains splits/train.csv. "
                  "Attach the ROSA dataset that holds splits/.")
 
     out = Path(args.out)
@@ -83,7 +86,7 @@ def main():
     (out / "splits").symlink_to(splits_root / "splits")
     print(f"splits/            <- {splits_root}")
     for name in ("metadata.parquet", "norm_stats.yaml", "dataset_summary.yaml"):
-        src = find_provider(roots, name)
+        src = find_provider(mounts, name)
         if src is not None:
             (out / name).symlink_to(src / name)
 
@@ -91,7 +94,7 @@ def main():
     for split in SPLITS:
         (out / split).mkdir()
         for sub in REQUIRED_SUBDIRS + OPTIONAL_SUBDIRS:
-            provider = find_provider(roots, f"{split}/{sub}")
+            provider = find_provider(mounts, f"{split}/{sub}")
             if provider is None:
                 if sub in REQUIRED_SUBDIRS:
                     missing.append(f"{split}/{sub}")
