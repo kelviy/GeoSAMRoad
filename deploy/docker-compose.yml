@@ -1,0 +1,47 @@
+# GeoSAMRoad web app
+#   cp deploy/.env.example deploy/.env    # then fill in the two paths
+#   docker compose -f deploy/docker-compose.yml up -d --build
+services:
+  geosamroad:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        TORCH_VARIANT: ${TORCH_VARIANT:-cu121}
+    image: geosamroad-app:latest
+    restart: unless-stopped
+    environment:
+      - GEOSAMROAD_CHECKPOINTS=/app/checkpoints
+      - GEOSAMROAD_DATA=/app/data
+      - GEE_PROJECT=${GEE_PROJECT}
+      - GEE_SERVICE_ACCOUNT=${GEE_SERVICE_ACCOUNT:-}
+      - GEE_PRIVATE_KEY_FILE=/app/gee-key.json
+      - GEOSAMROAD_INFER_BATCH=${GEOSAMROAD_INFER_BATCH:-16}
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    volumes:
+      # <root>/<variant>/*.ckpt -- read-only, the app never writes here
+      - ${CHECKPOINTS_PATH}:/app/checkpoints:ro
+      - ${GEE_PRIVATE_KEY_FILE}:/app/gee-key.json:ro
+      - geosamroad-data:/app/data
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.geosamroad.rule=Host(`geosamroad.${BASE_DOMAIN_URL}`)"
+      - "traefik.http.services.geosamroad.loadbalancer.server.port=8000"
+    # GPU passthrough. Comment this block out on a CPU-only host and build with
+    # TORCH_VARIANT=cpu.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  geosamroad-data:
+
+networks:
+  proxy:
+    external: true

@@ -10,6 +10,10 @@ from geosamroad.dataset.bands import (
 
 S2_EE_BANDS = ("B4", "B3", "B2", "B8", "B5", "B6", "B7", "B8A", "B11", "B12")
 
+# Tile geometry
+TILE_PX = 512      # tile size
+SCALE_M = 10       # spatial resolution
+
 S2_BANDS = ROSA_BANDS[:10]      # 1-10
 S1_BANDS = ROSA_BANDS[10:14]    # 11-14, VV/VH ascending then descending
 

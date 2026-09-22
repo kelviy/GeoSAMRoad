@@ -6,6 +6,8 @@ import numpy as np
 
 from globalurbanmapper_gee.bands import (
     N_SOURCE_BANDS,
+    SCALE_M,       
+    TILE_PX,
     source_band_names,
     source_bands,
     written_band_names,
@@ -14,8 +16,6 @@ from globalurbanmapper_gee.enhance import append_enhanced_rgb
 
 log = logging.getLogger(__name__)
 
-TILE_PX = 512      # tile size
-SCALE_M = 10       # spatial resolution  
 MAX_RETRIES = 5
 BACKOFF_BASE_S = 2.0
 

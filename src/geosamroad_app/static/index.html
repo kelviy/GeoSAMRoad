@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>GeoSAMRoad</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🛣️</text></svg>" />
+  <link rel="stylesheet" href="vendor/maplibre-gl.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="map"></div>
+
+  <aside class="panel">
+    <header class="panel-head">
+      <h1>GeoSAMRoad</h1>
+      <p class="sub">Road graphs from Sentinel-2, on demand</p>
+    </header>
+
+    <section class="field">
+      <label for="variant">Encoder</label>
+      <select id="variant"></select>
+      <p class="hint" id="variant-hint"></p>
+    </section>
+
+    <section class="field">
+      <label for="date">Imagery around</label>
+      <input type="date" id="date" value="2020-06-01" />
+      <p class="hint">A &plusmn;6&nbsp;month cloud-free composite is built around this date.</p>
+    </section>
+
+    <section class="field">
+      <label for="basemap">Basemap</label>
+      <select id="basemap">
+        <option value="s2">Sentinel-2 mosaic</option>
+        <option value="hires">High-res reference</option>
+      </select>
+      <p class="hint" id="basemap-hint"></p>
+    </section>
+
+    <section class="selection">
+      <div class="count"><strong id="sel-count">0</strong> <span>tiles selected</span></div>
+      <div class="area" id="sel-area">&mdash;</div>
+      <button id="clear" class="ghost" hidden>Clear</button>
+    </section>
+
+    <button id="run" class="primary" disabled>Select tiles on the map</button>
+
+    <div id="progress" class="progress" hidden>
+      <div class="bar"><div class="fill" id="progress-fill"></div></div>
+      <p class="hint" id="progress-msg"></p>
+    </div>
+
+    <div id="summary" class="summary" hidden></div>
+    <p id="error" class="error" hidden></p>
+
+    <section class="field toggles" id="toggles" hidden>
+      <label class="check"><input type="checkbox" id="show-imagery" checked /> Model's imagery</label>
+      <label class="check"><input type="checkbox" id="show-roads" checked /> Detected roads</label>
+    </section>
+
+    <footer class="panel-foot">
+      <span id="grid-status">Pan the map to load the grid</span>
+    </footer>
+  </aside>
+
+  <div class="legend">
+    <span class="swatch grid"></span> selectable tile
+    <span class="swatch sel"></span> selected
+    <span class="swatch road"></span> detected road
+  </div>
+
+  <script src="vendor/maplibre-gl.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

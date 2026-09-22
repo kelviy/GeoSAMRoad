@@ -10,9 +10,13 @@ wheels/
 .venv
 .env
 data/
+runs/
+save/
 .DS_Store
 
 */*.tif
 */*.tiff
 */*.parquet
 */.DS_Store
+wandb/*
+.env

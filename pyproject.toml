@@ -3,16 +3,10 @@ name = "geosamroad"
 version = "0.1.0"
 description = "Repository for GeoSAMRoad data and deployment code"
 readme = "README.md"
-# Kept at 3.11 so InstaGeo (requires-python ">=3.11,<3.13") can depend on this
-# package: uv resolves across the consumer's whole range, so a 3.12 floor here
-# makes the resolution unsatisfiable on 3.11.
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "numpy>=1.24.0",
     "pyyaml",
-    # Only read_csv/read_parquet/Series/concat are used, so keep the floor low:
-    # a >=3.0 pin forces a pandas major upgrade on every consumer (InstaGeo is
-    # on 2.x).
     "pandas>=2.0.0",
 ]
 
@@ -23,19 +17,18 @@ globalurbanmapper = [
     "numpy>=1.24.0",
     "rasterio>=1.3.0",
     "scikit-image>=0.22.0",
-    "shapely>=2.1.2",
+    "shapely>=2.0.0",
 ]
 
 sentinel2 = [
     "sknw",
     "scikit-image",
-    "opencv-python",
+    "opencv-python-headless",   # server: no GUI libs in the image
     "earthengine-api>=1.7.22",
-    "geopandas>=1.1.3",
-    "rasterio>=1.5.0",
-    "opencv-python",
-    "shapely>=2.1.2",
-    "pyarrow>=23.0.1",
+    "geopandas>=0.14.0",
+    "rasterio>=1.3.0",
+    "shapely>=2.0.0",
+    "pyarrow>=18.0.0",
     "jenkspy>=0.4.1",
     "typer>=0.24.1",
     "rioxarray>=0.22.0",
@@ -47,7 +40,7 @@ geosamroad = [
     # training
     "lightning",
     "torch>=2.1.0",
-    "torchvision>=0.25.0",
+    "torchvision>=0.20.0",
     "torchmetrics",
     "wandb",
     # models
@@ -57,11 +50,11 @@ geosamroad = [
     "huggingface-hub",
     "torchgeo>=0.9.0,<0.10",
     # dataset
-    "rasterio>=1.5.0",
-    "geopandas>=1.1.3",
-    "shapely>=2.1.2",
+    "rasterio>=1.3.0",
+    "geopandas>=0.14.0",
+    "shapely>=2.0.0",
     "pyarrow",
-    "opencv-python",
+    "opencv-python-headless",   # server: no GUI libs in the image
     "pydantic>=2.13.4",
     "addict",
     "albumentations>=2.0.8",
@@ -70,7 +63,7 @@ geosamroad = [
     "rtree",
     "scipy",
     "scikit-learn",
-    "scikit-image>=0.26.0",
+    "scikit-image>=0.22.0",
     "networkx",
     "numba",
     "tcod",
@@ -80,8 +73,16 @@ geosamroad = [
     "svgwrite",
     # misc
     "psutil",
-    "matplotlib>=3.10.8",
+    "matplotlib>=3.7.0",
     "kagglehub",
+]
+
+# The web app
+app = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "pydantic>=2.10.0",
+    "pillow>=10.0.0",   # true-colour tile previews
 ]
 
 docs = [
@@ -137,4 +138,9 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/geosamroad", "src/sentinel2data", "src/globalurbanmapper_gee"]
+packages = [
+    "src/geosamroad",
+    "src/sentinel2data",
+    "src/globalurbanmapper_gee",
+    "src/geosamroad_app",
+]
