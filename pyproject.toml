@@ -77,6 +77,42 @@ geosamroad = [
     "kagglehub",
 ]
 
+# Hosted notebooks (Kaggle/Colab). Same as `geosamroad` minus torch/torchvision,
+# which the host image already ships with a matching CUDA build, and minus
+# terratorch, whose dependency tree raises numpy far enough to break the image's
+# prebuilt numba. Covers unet/sgcn training, the threshold sweep and inference;
+# a terramind run on a hosted notebook additionally needs terratorch.
+kaggle = [
+    # training
+    "lightning",
+    "torchmetrics",
+    "wandb",
+    # models
+    "segmentation-models-pytorch",
+    "segment-anything",
+    # dataset
+    "rasterio>=1.3.0",
+    "geopandas>=0.14.0",
+    "shapely>=2.0.0",
+    "pyarrow",
+    "opencv-python-headless",
+    "pydantic>=2.13.4",
+    "addict",
+    "albumentations>=2.0.8",
+    # graphs and utility
+    "igraph",
+    "rtree",
+    "scipy",
+    "scikit-learn",
+    "scikit-image>=0.22.0",
+    "networkx",
+    "numba",
+    "tcod",
+    "imageio",
+    # misc
+    "matplotlib>=3.7.0",
+]
+
 # The web app
 app = [
     "fastapi>=0.115.0",

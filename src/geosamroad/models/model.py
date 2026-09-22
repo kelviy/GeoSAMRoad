@@ -12,11 +12,12 @@ from torchmetrics.classification import (
 )
 import lightning.pytorch as pl
 from segment_anything.modeling.image_encoder import ImageEncoderViT
-from terratorch.models import EncoderDecoderFactory
 from geosamroad.models.samroad_wrappers import TerraTorchSAMWrapper, OriginalNaiveDecoder
 from geosamroad.models.normalization import terramind_norm, sam_norm
-from geosamroad.models.geospatial_encoder import GeoBackboneEncoder
 from geosamroad.models.segmentation_wrappers import UnetRoadSegmentation, SgcnRoadSegmentation
+# terratorch (EncoderDecoderFactory, GeoBackboneEncoder) is imported lazily in the
+# sam/terramind branches below: it is a heavy tree whose numpy floor is high enough
+# to break the prebuilt numba on hosted images, and unet/sgcn runs never touch it.
 from geosamroad.models.losses import build_mask_criterion
 from geosamroad.sam_road.model import BilinearSampler
 
@@ -217,6 +218,8 @@ class GeoSAMRoad(pl.LightningModule):
             mean, std, scale = sam_norm()
             topo_feature_dim = 256
         elif self.config.ENCODER_MODEL == 'terramind':
+            from geosamroad.models.geospatial_encoder import GeoBackboneEncoder
+
             backbone = GeoBackboneEncoder(str(config.get("TERRAMIND_VERSION", "small")),
                                           self.config.RGB_INPUT, image_size,
                                           pretrained=bool(config.get("PRETRAINED", True)))
@@ -267,6 +270,8 @@ class GeoSAMRoad(pl.LightningModule):
 
     def _build_backbone_segmentation(self, backbone, decoder_in_channels):
         """ SAM-Road Transformer Backbone with naive decoder wrapped in terratorch"""
+        from terratorch.models import EncoderDecoderFactory
+
         ### Road Segmentation
         model_factory = EncoderDecoderFactory()
 
