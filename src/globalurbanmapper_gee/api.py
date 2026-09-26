@@ -16,6 +16,7 @@ def build_region_image(
     start_date="2020-01-01",
     end_date="2021-01-01",
     band_list="s1s2",
+    crs=None,
     initialize=True,
 ):
     if initialize:
@@ -28,7 +29,9 @@ def build_region_image(
     else:
         raise ValueError("Provide either lon/lat or bbox")
 
-    image, crs = stack.build_rosa_image(aoi, start_date, end_date, band_list=band_list)
+    image, crs = stack.build_rosa_image(
+        aoi, start_date, end_date, band_list=band_list, crs=crs
+    )
     return image, crs, aoi
 
 
@@ -41,6 +44,7 @@ def fetch_region(
     start_date="2020-01-01",
     end_date="2021-01-01",
     band_list="s1s2",
+    crs=None,
     out_path=None,
     out_dir=None,
     scale=SCALE_M,
@@ -60,7 +64,7 @@ def fetch_region(
     image, crs, aoi = build_region_image(
         lon=lon, lat=lat, width_km=width_km, height_km=height_km, bbox=bbox,
         start_date=start_date, end_date=end_date, band_list=band_list,
-        initialize=initialize,
+        crs=crs, initialize=initialize,
     )
     bounds = geometry.planar_bounds(aoi, crs)
     log.info("AOI %s in %s", bounds, crs)

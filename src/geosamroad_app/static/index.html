@@ -11,11 +11,26 @@
 <body>
   <div id="map"></div>
 
-  <aside class="panel">
+  <button id="panel-toggle" class="panel-toggle" title="Show panel" aria-expanded="true">
+    <span class="chev">&#10094;</span>
+  </button>
+
+  <aside class="panel" id="panel">
     <header class="panel-head">
-      <h1>GeoSAMRoad</h1>
-      <p class="sub">Road graphs from Sentinel-2, on demand</p>
+      <div>
+        <h1>GeoSAMRoad</h1>
+        <p class="sub">Road graphs from Sentinel-2, on demand</p>
+      </div>
     </header>
+
+    <section class="field">
+      <label for="goto">Go to location</label>
+      <div class="row">
+        <input type="text" id="goto" placeholder="Place name, or lat, lon" autocomplete="off" />
+        <button id="goto-btn" class="ghost go">Go</button>
+      </div>
+      <p class="hint" id="goto-hint">Try &ldquo;Thohoyandou&rdquo; or &ldquo;-33.93, 18.45&rdquo;.</p>
+    </section>
 
     <section class="field">
       <label for="variant">Encoder</label>
@@ -34,6 +49,7 @@
       <select id="basemap">
         <option value="s2">Sentinel-2 mosaic</option>
         <option value="hires">High-res reference</option>
+        <option value="osm">Street map</option>
       </select>
       <p class="hint" id="basemap-hint"></p>
     </section>
@@ -51,12 +67,23 @@
       <p class="hint" id="progress-msg"></p>
     </div>
 
-    <div id="summary" class="summary" hidden></div>
     <p id="error" class="error" hidden></p>
 
-    <section class="field toggles" id="toggles" hidden>
-      <label class="check"><input type="checkbox" id="show-imagery" checked /> Model's imagery</label>
-      <label class="check"><input type="checkbox" id="show-roads" checked /> Detected roads</label>
+    <section class="layers">
+      <div class="layers-head">
+        <label>Results</label>
+        <div class="layers-actions">
+          <button id="import-btn" class="ghost tiny" title="Load a saved result">Load</button>
+          <input type="file" id="import-file" accept=".json,.geojson" hidden />
+        </div>
+      </div>
+      <div class="layer-list" id="layer-list">
+        <p class="empty" id="layer-empty">No results yet. Select tiles and detect roads,
+          or load a saved result.</p>
+      </div>
+      <label class="check" id="save-imagery-wrap">
+        <input type="checkbox" id="save-imagery" checked /> Include imagery when saving
+      </label>
     </section>
 
     <footer class="panel-foot">

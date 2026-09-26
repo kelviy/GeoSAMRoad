@@ -39,6 +39,33 @@ services:
               count: 1
               capabilities: [gpu]
 
+  # Public access over a Cloudflare tunnel. Opt-in: this only starts when the
+  # `public` profile is requested, so a plain `up` stays VPN-only.
+  #
+  #   docker compose -f deploy/docker-compose.yml --env-file deploy/.env \
+  #       --profile public up -d
+  #
+  # In the tunnel's Public Hostname config point geosamroad.kelvinwei.com at
+  # HTTP -> geosamroad:8000 (the service alias on the proxy network below).
+  # Cloudflare terminates TLS at the edge, so this hop is plain HTTP and never
+  # leaves the Docker network -- no port is published on the host.
+  #
+  # NOTE: the app has no authentication of its own. A Cloudflare Access policy
+  # on that hostname is the only thing gating it, and it must be active BEFORE
+  # this service first starts.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - geosamroad
+    networks:
+      - proxy
+    profiles:
+      - public
+
 volumes:
   geosamroad-data:
 

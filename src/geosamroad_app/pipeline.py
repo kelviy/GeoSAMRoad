@@ -38,11 +38,16 @@ def fetch_tile(tile_id, band_list, start_date, end_date, out_dir):
     """
     from globalurbanmapper_gee import api
 
+    # Sample in EPSG:4326 at the grid's own degree scale, so the written tile is
+    # the selected cell exactly -- same CRS, same origin, same size. Nothing is
+    # reprojected between the map, the imagery and the graph.
     api.fetch_region(
         bbox=grid.tile_bounds_wgs84(tile_id),
         start_date=start_date,
         end_date=end_date,
         band_list=band_list,
+        crs=f"EPSG:{grid.EPSG}",
+        scale=grid.PIXEL_DEG,
         out_dir=str(out_dir),
         initialize=False,
     )
@@ -132,11 +137,17 @@ def run(tile_ids, variant_name, date, data_root, checkpoint_root, progress=None)
             features.extend(out["features"])
             total_nodes += out["nodes"]
             total_edges += out["edges"]
+            # Bounds come from the warped raster, not from the cell: the two
+            # differ by a couple of hundred metres whenever Earth Engine picks a
+            # granule CRS other than the cell's UTM zone. The preview is now
+            # north-up in WGS84, so the quad is a plain rectangle.
+            west, south, east, north = out["preview_bounds"]
             previews.append({
                 "tile_id": tile_id,
                 "url": f"previews/{tile_id}.png",
-                "bounds": grid.tile_bounds_wgs84(tile_id),
-                "corners": grid.tile_image_corners(tile_id),
+                "bounds": [west, south, east, north],
+                "corners": [[west, north], [east, north],
+                            [east, south], [west, south]],   # TL, TR, BR, BL
             })
         except Exception as exc:                      # one bad tile must not sink the job
             log.exception("Tile %s failed", tile_id)

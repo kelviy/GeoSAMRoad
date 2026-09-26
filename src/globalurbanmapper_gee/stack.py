@@ -18,7 +18,13 @@ def resolve_crs(s2_coll, fallback_geometry=None):
     return crs
 
 
-def build_rosa_image(geometry, start_date, end_date, band_list="s1s2"):
+def build_rosa_image(geometry, start_date, end_date, band_list="s1s2", crs=None):
+    """``crs`` forces the sampling CRS; by default the S2 granule's own is used.
+
+    Passing ``"EPSG:4326"`` samples in degrees, which keeps the tile north-up in
+    lon/lat (nothing to reproject downstream) at the cost of pixels that are no
+    longer square on the ground away from the equator.
+    """
     src = source_bands(band_list)
     bbox = geometry.bounds(1)
     date = [start_date, end_date]
@@ -27,7 +33,7 @@ def build_rosa_image(geometry, start_date, end_date, band_list="s1s2"):
     s2_coll = imagery.gen_sentinel2_data(
         bbox, date, [S2_EE_BANDS[b - 1] for b in s2_idx]
     )
-    crs = resolve_crs(s2_coll, bbox)
+    crs = crs or resolve_crs(s2_coll, bbox)
 
     # S2 SR is scaled by 10000
     s2 = s2_coll.median().divide(10000).toFloat()

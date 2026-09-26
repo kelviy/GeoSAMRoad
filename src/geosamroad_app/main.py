@@ -6,12 +6,13 @@ Config is environment only, so deploying is `docker compose up`:
     GEOSAMROAD_DATA         scratch + preview dir           (default /app/data)
     GEE_PROJECT / GEE_SERVICE_ACCOUNT / GEE_PRIVATE_KEY_FILE   Earth Engine auth
 """
+import hashlib
 import logging
 import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -46,7 +47,9 @@ def get_config():
         "variants": available,
         "default_variant": (available[0]["name"] if available
                             else variants.DEFAULT_VARIANT),
-        "tile_km": round(grid.TILE_M / 1000, 2),
+        "tile_deg": grid.TILE_DEG,
+        "tile_km": round(grid.TILE_DEG * 110.574, 2),   # north-south, exact
+        "pixel_deg": grid.PIXEL_DEG,
         "max_tiles_per_view": grid.MAX_TILES_PER_VIEW,
         "max_tiles_per_job": 24,
         "checkpoints_found": bool(available),
@@ -126,5 +129,51 @@ def healthz():
     return {"ok": True, "checkpoints": bool(variants.available(CHECKPOINT_ROOT))}
 
 
+def asset_version():
+    """Short hash of the front-end assets, recomputed per request.
+
+    Appended to the script/stylesheet URLs so every deploy produces URLs that
+    were never cached before. Without this, any cache between here and the
+    browser -- Cloudflare's edge in particular -- can keep serving last build's
+    app.js against this build's index.html, which fails as missing handlers
+    rather than as an obvious caching problem.
+    """
+    digest = hashlib.sha256()
+    for name in ("app.js", "style.css"):
+        path = STATIC_DIR / name
+        if path.is_file():
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:10]
+
+
+@app.get("/", response_class=HTMLResponse)
+def index():
+    """index.html with cache-busted asset URLs."""
+    html = (STATIC_DIR / "index.html").read_text()
+    version = asset_version()
+    html = html.replace('href="style.css"', f'href="style.css?v={version}"')
+    html = html.replace('src="app.js"', f'src="app.js?v={version}"')
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
+class RevalidatingStaticFiles(StaticFiles):
+    """Static files that must be revalidated before reuse.
+
+    Starlette sends ETag and Last-Modified but no Cache-Control, and browsers
+    then fall back to *heuristic* freshness: they serve a cached copy without
+    asking. After a redeploy that mixes a new index.html with a stale app.js,
+    which fails in confusing ways -- missing handlers, unstyled controls --
+    rather than looking like a cache problem.
+
+    ``no-cache`` means "revalidate", not "do not store": with the ETag intact
+    an unchanged file still costs only a 304.
+    """
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # Mounted last so /api/* wins; html=True serves index.html at /.
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+app.mount("/", RevalidatingStaticFiles(directory=STATIC_DIR, html=True), name="static")

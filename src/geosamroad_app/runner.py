@@ -132,6 +132,42 @@ def _true_colour(raw):
     return (stretched.transpose(1, 2, 0) * 255).astype(np.uint8)
 
 
+def _save_preview_wgs84(raw, src_crs, src_bounds, path):
+    """Write the preview reprojected to WGS84 -> its ``(w, s, e, n)`` bounds.
+
+    The model reads the tile in its native UTM, which is isotropic 10 m and what
+    it was trained on. The *preview* is warped to EPSG:4326 so the map can pin it
+    as a plain north-up rectangle that lines up with the road graph pixel for
+    pixel. Bounds come from the raster itself, never from the planning grid --
+    Earth Engine samples in the S2 granule's CRS, which can be a different UTM
+    zone than the cell, leaving the real footprint a couple of hundred metres
+    off the cell outline.
+    """
+    from PIL import Image
+    from rasterio.transform import array_bounds, from_bounds
+    from rasterio.warp import Resampling, calculate_default_transform, reproject
+
+    rgb = _true_colour(raw)
+    height, width = rgb.shape[:2]
+    src_transform = from_bounds(*src_bounds, width, height)
+    dst_transform, dst_w, dst_h = calculate_default_transform(
+        src_crs, WGS84, width, height, *src_bounds
+    )
+
+    warped = np.zeros((dst_h, dst_w, 3), dtype="uint8")
+    for band in range(3):
+        reproject(
+            source=rgb[:, :, band], destination=warped[:, :, band],
+            src_transform=src_transform, src_crs=src_crs,
+            dst_transform=dst_transform, dst_crs=WGS84,
+            resampling=Resampling.bilinear,
+        )
+    Image.fromarray(warped).save(path, optimize=True)
+
+    west, south, east, north = array_bounds(dst_h, dst_w, dst_transform)
+    return [west, south, east, north]
+
+
 def infer_tile(net, config, bands, device, tile_path, preview_path=None):
     """Infer one tile -> ``{"features": [...], "nodes": n, "edges": m}``.
 
@@ -154,9 +190,9 @@ def infer_tile(net, config, bands, device, tile_path, preview_path=None):
         net, torch.from_numpy(np.ascontiguousarray(img)), config, device
     )
 
-    if preview_path:
-        from PIL import Image
-        Image.fromarray(_true_colour(raw)).save(preview_path, optimize=True)
+    preview_bounds = (
+        _save_preview_wgs84(raw, src_crs, bounds, preview_path) if preview_path else None
+    )
 
     lonlat = _pixels_to_wgs84(nodes_rc, up_size, src_crs, bounds)
     features = [
@@ -173,4 +209,9 @@ def infer_tile(net, config, bands, device, tile_path, preview_path=None):
         }
         for a, b in edges
     ]
-    return {"features": features, "nodes": int(len(nodes_rc)), "edges": int(len(edges))}
+    return {
+        "features": features,
+        "nodes": int(len(nodes_rc)),
+        "edges": int(len(edges)),
+        "preview_bounds": preview_bounds,
+    }
