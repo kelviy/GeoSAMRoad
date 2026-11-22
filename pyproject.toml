@@ -131,6 +131,8 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "geosamroad[sentinel2]",
+    "pytest>=8.0",
     "mkdocs-gen-files>=0.6.1",
     "mkdocs-literate-nav>=0.6.3",
     "mkdocstrings[python]>=1.0.4",
