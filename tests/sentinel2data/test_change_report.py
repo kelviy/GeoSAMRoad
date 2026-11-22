@@ -88,3 +88,15 @@ def test_split_table_sums_zones_per_split_and_overall(report):
     assert (total["Kept (previous)"], total["Kept (baseline)"], total["Change"]) == ("5", "4", "-1")
     assert (total["No road (previous)"], total["No road (baseline)"]) == ("1", "2")
     assert (total["Slipway segments"], total["Slipway km"]) == ("1", "0.81")
+
+
+def test_refuses_a_zone_whose_split_differs_from_the_previous_dataset(baseline, tmp_path):
+    moved = [{**z, "split": "train"} if z["zone"] == VAL_ZONE else z for z in PREVIOUS_ZONES]
+    (tmp_path / "generation_report.yaml").write_text(yaml.safe_dump({"zones": moved}))
+    result = CliRunner().invoke(
+        app, ["change-report", "--dataset-dir", str(baseline), "--previous-dir", str(tmp_path),
+              "--out", str(tmp_path / "report.md")],
+    )
+    assert result.exit_code != 0
+    assert VAL_ZONE in str(result.exception)
+    assert not (tmp_path / "report.md").exists()

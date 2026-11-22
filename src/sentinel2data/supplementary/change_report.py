@@ -78,9 +78,12 @@ def build_change_report(dataset_dir, previous_dir) -> str:
     """The report as markdown."""
     paths = DatasetPaths(dataset_dir)
     baseline = yaml.safe_load(paths.report_path.read_text())
-    previous_report = yaml.safe_load((Path(previous_dir) / "generation_report.yaml").read_text())
+    previous_report = yaml.safe_load(DatasetPaths(previous_dir).report_path.read_text())
     previous = {z["zone"]: z for z in previous_report["zones"]}
     splits = _zone_splits(paths)
+    moved = [z for z, s in splits.items() if previous[z]["split"] != s]
+    if moved:
+        raise ValueError(f"Zones in a different split than in the previous dataset: {', '.join(moved)}")
     classes = baseline["label_changes"]["excluded_road_classes"]
     excluded = baseline["label_changes"]["excluded_by_zone"]
     columns = ZONE_COLUMNS + _excluded_columns(classes)

@@ -1,4 +1,4 @@
-from geosamroad.dataset.bands import ROSA_BANDS, TM_S2L2A_NAMES, TM_S1GRD_NAMES
+from geosamroad.dataset.bands import ROSA_BANDS, TM_S1GRD_NAMES, TM_S2L2A_NAMES
 
 # SAM RGB stats, for 0-255 pixel values
 SAM_PIXEL_MEAN = [123.675, 116.28, 103.53]
@@ -103,7 +103,7 @@ def sam_norm():
 _ROSA_MEANS = [0.118542, 0.0900151, 0.059118, 0.23897, 0.152557, 0.207308, 0.228655, 0.246422, 0.267869, 0.204559, -12.6379, -19.5885, 690.628, 7.15673, 171.245, 1, 1, 1, 0.551126, 0.522076, 0.48006]
 _ROSA_STDS = [0.0737832, 0.0416436, 0.0296637, 0.0688163, 0.07177, 0.0614309, 0.0655398, 0.0677955, 0.103342, 0.105481, 3.53385, 3.96946, 471.217, 7.33572, 95.0004, 0, 0, 0, 0.177911, 0.147157, 0.147469]
 
-# Keyed by band name, so the stats follow each physical band across layouts.
+# Keyed by band name, so a band is looked up by what it is, not where it sits.
 ROSA_NORM_STATS = {
     name: (mean, std)
     for name, mean, std in zip(ROSA_BANDS, _ROSA_MEANS, _ROSA_STDS, strict=True)
