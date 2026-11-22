@@ -185,6 +185,27 @@ def norm_stats(
 
 
 @app.command()
+def change_report(
+    dataset_dir: Annotated[
+        Path,
+        typer.Option(help="Baseline dataset directory written by `generate` (holds tile_status/)"),
+    ],
+    previous_dir: Annotated[
+        Path,
+        typer.Option(help="Previous dataset directory to compare with (its generation_report.yaml)"),
+    ],
+    out: Annotated[
+        Optional[Path],
+        typer.Option(help="Output markdown (default <dataset_dir>/kept_dropped_report.md)"),
+    ] = None,
+):
+    """Kept/dropped tiles per split and zone against a previous dataset, plus excluded road classes."""
+    from sentinel2data.supplementary.change_report import write_change_report
+
+    typer.echo(f"Wrote {write_change_report(dataset_dir, previous_dir, out)}")
+
+
+@app.command()
 def summary(
     dataset_dir: DatasetDir,
     out: Annotated[
