@@ -1,4 +1,4 @@
-from geosamroad.dataset.bands import TM_S2L2A_NAMES, TM_S1GRD_NAMES
+from geosamroad.dataset.bands import ROSA_BANDS, ROSA_BANDS_V2, TM_S2L2A_NAMES, TM_S1GRD_NAMES
 
 # SAM RGB stats, for 0-255 pixel values
 SAM_PIXEL_MEAN = [123.675, 116.28, 103.53]
@@ -97,11 +97,20 @@ def sam_norm():
     return list(SAM_PIXEL_MEAN), list(SAM_PIXEL_STD), 255
 
 ## ROSA Road Dataset Norms
-# 23 Bands
-ROSA_MEANS=[0.118542, 0.0900151, 0.059118, 0.23897, 0.152557, 0.207308, 0.228655, 0.246422, 0.267869, 0.204559, -12.6379, -19.5885, -11.2967, -18.2211, 690.628, 7.15673, 171.245, 1, 1, 1, 0.551126, 0.522076, 0.48006]
-ROSA_STDS=[0.0737832, 0.0416436, 0.0296637, 0.0688163, 0.07177, 0.0614309, 0.0655398, 0.0677955, 0.103342, 0.105481, 3.53385, 3.96946, 3.24179, 3.59768, 471.217, 7.33572, 95.0004, 0, 0, 0, 0.177911, 0.147157, 0.147469]
+# Frozen train stats, computed on the legacy 23-band layout (ROSA_BANDS_V2 order).
+_ROSA_V2_MEANS=[0.118542, 0.0900151, 0.059118, 0.23897, 0.152557, 0.207308, 0.228655, 0.246422, 0.267869, 0.204559, -12.6379, -19.5885, -11.2967, -18.2211, 690.628, 7.15673, 171.245, 1, 1, 1, 0.551126, 0.522076, 0.48006]
+_ROSA_V2_STDS=[0.0737832, 0.0416436, 0.0296637, 0.0688163, 0.07177, 0.0614309, 0.0655398, 0.0677955, 0.103342, 0.105481, 3.53385, 3.96946, 3.24179, 3.59768, 471.217, 7.33572, 95.0004, 0, 0, 0, 0.177911, 0.147157, 0.147469]
 
-ROSA_BAND_COUNT = 23
+# Keyed by band name, so the stats follow each physical band across layouts.
+ROSA_NORM_STATS = {
+    name: (mean, std)
+    for name, mean, std in zip(ROSA_BANDS_V2, _ROSA_V2_MEANS, _ROSA_V2_STDS, strict=True)
+}
+
+# In the current written layout (ROSA_BANDS) order.
+ROSA_MEANS = [ROSA_NORM_STATS[name][0] for name in ROSA_BANDS]
+ROSA_STDS = [ROSA_NORM_STATS[name][1] for name in ROSA_BANDS]
+ROSA_BAND_COUNT = len(ROSA_BANDS)
 
 
 def rosa_norm(bands):

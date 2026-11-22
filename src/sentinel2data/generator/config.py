@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from geosamroad.dataset.bands import S1_DESCENDING_BANDS
+
 ## GENERAL CONSTANTS ##
 
 WGS84 = "EPSG:4326"          # common lat/lon CRS. Google maps view of a map
@@ -60,13 +62,20 @@ CDNGI_ROAD_CLASSIFICATION = {
     },
     "small": {
         "Street": 4.0, 
-        "Track": 3.0, 
-        "Slipway": 3.0,
     },
+    # Not roads under the ROSA definition (Track: faint vehicle tracks; Slipway: boat ramps)
     "ignored": {
-        "Footpath": -1
+        "Footpath": -1,
+        "Track": -1,
+        "Slipway": -1,
     }
 }
+
+# Road classes ``generate`` removes before any label is produced (raw-label
+# baseline): the CDNGI ignored section. The ``roads`` command already skips
+# them, but road parquets built before Track/Slipway moved there still hold
+# them. They never reach rasters, graphs, keypoints or the no-road drop check.
+EXCLUDED_ROAD_CLASSES = tuple(CDNGI_ROAD_CLASSIFICATION["ignored"])
 
 def flatten_classification(road_classification_config: dict, exclude_class: tuple = ("ignored",)) -> tuple[dict, dict, list]:
     """Flatten config into mappings of road class to scale and buffer. 
@@ -93,7 +102,11 @@ def flatten_classification(road_classification_config: dict, exclude_class: tupl
 CLASS_LABELS = ["Low", "Medium", "High"]
 EMPTY_LABEL = "Empty"
 
-NAN_EXEMPT_BANDS = (13, 14)  # VV_descending, VH_descending
+# Source bands the generator drops from written tiles (by name). Once
+# dropped, their no-data exemption below no longer applies.
+DROPPED_BANDS = S1_DESCENDING_BANDS
+# Source bands allowed to hold NaN in a kept tile, only when they are written.
+NAN_EXEMPT_BANDS = S1_DESCENDING_BANDS
 
 ROSA_METADATA_COLUMNS = [
     # indexing
@@ -118,7 +131,7 @@ ROSA_METADATA_COLUMNS = [
     "crs",
     "tile_bounding_geometry",   # for visualisation of dataset tiles
     "tile_size",                # tile edge in px. Constant (512px x 512px)
-    "band_count",               # source bands + 3 appended enhanced-RGB bands. Constant (23)
+    "band_count",               # kept source bands + 3 appended enhanced-RGB bands (21; legacy 23)
     "spatial_resolution",       # spatial resolution. Constant (10)
 ]
 
@@ -135,6 +148,10 @@ ROSA_SPLIT_CSV_COLUMNS = [
     "biome",
     "urbanisation_classification",
 ]
+
+# Tile-status table: one row per tile position of each zone, in the zone CRS.
+TILE_STATUSES = ("kept", "dropped_no_road", "dropped_nan", "untiled")
+TILE_STATUS_COLUMNS = ["tile_id", "zone_filename", "zone_name", "split_set", "row", "col", "status"]
 
 ## Dataset Processing Configs ##
 @dataclass(frozen=True)
@@ -193,6 +210,17 @@ class DatasetPaths:
     @property
     def metadata_path(self) -> Path:
         return self.root / "metadata.parquet"
+
+    @property
+    def tile_status_dir(self) -> Path:
+        return self.root / "tile_status"
+
+    def tile_status_path(self, zone_filename) -> Path:
+        return self.tile_status_dir / f"{zone_filename}.parquet"
+
+    @property
+    def report_path(self) -> Path:
+        return self.root / "generation_report.yaml"
 
     def split_dirs(self, split) -> dict:
         base = self.root / split

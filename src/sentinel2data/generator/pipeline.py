@@ -4,13 +4,16 @@ from pathlib import Path
 import geopandas as gpd
 
 from sentinel2data.generator.config import (
+    DROPPED_BANDS,
+    EXCLUDED_ROAD_CLASSES,
     SPLIT_NAMES,
+    TILE_STATUSES,
     WGS84,
     DatasetPaths,
     TileSpec,
 )
 from sentinel2data.generator.helper import scan_rasters
-from sentinel2data.generator.io import write_geoparquet, write_split_csvs
+from sentinel2data.generator.io import write_geoparquet, write_split_csvs, write_yaml
 from sentinel2data.generator.labels import RasterMaskLabeler
 from sentinel2data.generator.naming import assign_zone_metadata
 from sentinel2data.generator.processor import ROSAProcessor
@@ -86,13 +89,17 @@ class RosaPipeline:
         zone_meta = assign_zone_metadata(flat)
 
         # Create artifacts and metadata per tile
-        rows = []
+        rows, results = [], []
         for zone_id, (split, path) in enumerate(flat):
             print("-" * 50)
-            zone_rows = self.processor.process(
-                zone_id, path, split, zone_meta[(split, path)], self.paths
-            )
-            rows.extend(zone_rows)
+            meta = zone_meta[(split, path)]
+            result = self.processor.process(zone_id, path, split, meta, self.paths)
+            write_geoparquet(result.tile_status, self.paths.tile_status_path(meta.zone_filename))
+            rows.extend(result.rows)
+            results.append((meta, result))
+
+        write_yaml(self.paths.report_path, self._report(results))
+        print(f"Wrote generation report to {self.paths.report_path}")
 
         if not rows:
             print("Warning: No images produced; nothing written.")
@@ -121,12 +128,43 @@ class RosaPipeline:
         return self.paths.metadata_path
 
 
-def _make_processor(roads_parquet_path, tile_size, patch_size, enhance_cfg):
+    def _report(self, results) -> dict:
+        """Generation report. Label and imagery changes are kept apart."""
+        band_names = results[0][1].band_names if results else []
+        return {
+            "label_changes": {
+                "excluded_road_classes": list(self.processor.excluded_road_classes),
+                "excluded_by_zone": {
+                    meta.zone_filename: {
+                        cls: {"segments": v["segments"], "length_m": round(v["length_m"], 3)}
+                        for cls, v in result.excluded.items()
+                    }
+                    for meta, result in results
+                },
+            },
+            "imagery_changes": {
+                "dropped_bands": list(self.processor.dropped_bands),
+                "band_count": len(band_names),
+                "band_names": list(band_names),
+            },
+            "tile_status": {
+                meta.zone_filename: {
+                    st: int((result.tile_status["status"] == st).sum()) for st in TILE_STATUSES
+                }
+                for meta, result in results
+            },
+        }
+
+
+def _make_processor(roads_parquet_path, tile_size, patch_size, enhance_cfg,
+                    excluded_road_classes, dropped_bands):
     return ROSAProcessor(
         roads_parquet_path,
         tile_spec=TileSpec(tile_size=tile_size, patch_size=patch_size),
         mask_labeler=RasterMaskLabeler(),
         enhance_cfg=enhance_cfg,
+        excluded_road_classes=excluded_road_classes,
+        dropped_bands=dropped_bands,
     )
 
 
@@ -137,10 +175,15 @@ def make_rosa_pipeline(
     tile_size=512,
     patch_size=256,
     enhance_cfg=None,
+    excluded_road_classes=EXCLUDED_ROAD_CLASSES,
+    dropped_bands=DROPPED_BANDS,
 ):
     """Build a dataset from a pre-split ``<imagery_dir>/{train,val,test}`` root."""
     return RosaPipeline(
         source=PreSplitImagerySource(imagery_dir),
-        processor=_make_processor(roads_parquet_path, tile_size, patch_size, enhance_cfg),
+        processor=_make_processor(
+            roads_parquet_path, tile_size, patch_size, enhance_cfg,
+            excluded_road_classes, dropped_bands,
+        ),
         paths=DatasetPaths(output_dir),
     )

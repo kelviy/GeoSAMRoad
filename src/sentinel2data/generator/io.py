@@ -142,3 +142,13 @@ def write_split_csvs(gdf, splits_dir, columns):
         print(f"Wrote {len(group)} rows to {out_path}")
         written.append(out_path)
     return written
+
+
+def write_yaml(path, obj):
+    """Writes a plain dict/list structure to YAML, keeping key order"""
+    import yaml
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(obj, sort_keys=False))
+    return path

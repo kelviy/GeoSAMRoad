@@ -7,7 +7,11 @@ from geosamroad.dataset.helper import read_split_csv
 IMAGERY_COLS = "image_path"
 SAR_NAMES = {"VV_ascending", "VH_ascending", "VV_descending", "VH_descending"}
 
-def _band_names(n):
+def _band_names(src):
+    """Band names from the tile's own descriptions, else the ROSA layout."""
+    n = src.count
+    if all(src.descriptions):
+        return list(src.descriptions)
     names = list(ROSA_BANDS[:n])
     names += [f"band{i + 1}" for i in range(len(names), n)]
     return names
@@ -34,7 +38,7 @@ def compute(dataset_dir, exclude_zero=True, sar_clip=None):
 
     with rasterio.open(root / image_paths[0]) as src:
         n = src.count
-    names = _band_names(n)
+        names = _band_names(src)
     sar_idx = {i for i, nm in enumerate(names) if nm in SAR_NAMES}
 
     sum = np.zeros(n, "float64")

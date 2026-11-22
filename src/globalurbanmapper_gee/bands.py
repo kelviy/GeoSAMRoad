@@ -2,10 +2,12 @@ from collections import OrderedDict
 
 from geosamroad.dataset.bands import (
     ENHANCED_RGB,
-    ENHANCED_RGB_BANDS,
+    GEE_GLOBALURBANMAPPER_BANDS,
     RGB,
     ROSA_BANDS,
     ROSA_SEG_BANDS,
+    ROSA_SOURCE_BANDS,
+    S1_ASCENDING_BANDS,
 )
 
 S2_EE_BANDS = ("B4", "B3", "B2", "B8", "B5", "B6", "B7", "B8A", "B11", "B12")
@@ -15,19 +17,21 @@ TILE_PX = 512      # tile size
 SCALE_M = 10       # spatial resolution
 
 S2_BANDS = ROSA_BANDS[:10]      # 1-10
-S1_BANDS = ROSA_BANDS[10:14]    # 11-14, VV/VH ascending then descending
+# Names given to the fetched S1 means: ascending then descending. Only the
+# ascending pair is in the written ROSA layout; descending is selected away.
+S1_BANDS = GEE_GLOBALURBANMAPPER_BANDS[10:14]
 
-N_SOURCE_BANDS = len(ROSA_BANDS) - len(ENHANCED_RGB_BANDS)  # equals 20 bands
-N_FETCHABLE_BANDS = len(S2_BANDS) + len(S1_BANDS)           # equals 14 bands to fetch from gee
+N_SOURCE_BANDS = len(ROSA_SOURCE_BANDS)                                # 18 source bands
+N_FETCHABLE_BANDS = ROSA_BANDS.index(S1_ASCENDING_BANDS[-1]) + 1      # 12 fetched from gee (S2 + S1 asc)
 
 BAND_LIST: "OrderedDict[str, dict]" = OrderedDict(
     rgb=dict(
-        description="RGB-only encoders: CLAHE-enhanced RGB (21-23)",
+        description="RGB-only encoders: CLAHE-enhanced RGB (19-21)",
         bands=ENHANCED_RGB,
     ),
     s1s2=dict(
         description=(
-            "multi-band encoders: enhanced RGB (21-23) "
+            "multi-band encoders: enhanced RGB (19-21) "
             "+ S2 (4-10) + S1 VV/VH ascending (11-12)"
         ),
         bands=ROSA_SEG_BANDS,

@@ -1,9 +1,10 @@
 from pathlib import Path
-from typing import Annotated, Optional, Tuple
+from typing import Annotated, List, Optional, Tuple
 import typer
 import yaml
 
 from sentinel2data.supplementary.roads import RoadVectorExtractor
+from sentinel2data.generator.config import DROPPED_BANDS, EXCLUDED_ROAD_CLASSES
 from sentinel2data.generator.pipeline import make_rosa_pipeline
 
 app = typer.Typer(help="ROSA Dataset CLI")
@@ -48,6 +49,18 @@ def generate(
         int, 
         typer.Option(help="Image COG internal block size")
     ] = 256,
+    exclude_road_class: Annotated[
+        List[str],
+        typer.Option(help="Road class removed before any label is produced. Repeat for several"),
+    ] = list(EXCLUDED_ROAD_CLASSES),
+    keep_all_road_classes: Annotated[
+        bool,
+        typer.Option(help="Exclude no road classes (ignores --exclude-road-class)"),
+    ] = False,
+    keep_s1_descending: Annotated[
+        bool,
+        typer.Option(help="Keep the Sentinel-1 descending VV/VH bands (legacy 23-band layout)"),
+    ] = False,
 ):
     """Generate the ROSA dataset from a pre-split imagery root"""
     make_rosa_pipeline(
@@ -56,6 +69,8 @@ def generate(
         roads_parquet_path=roads,
         tile_size=tile_size,
         patch_size=patch_size,
+        excluded_road_classes=() if keep_all_road_classes else tuple(exclude_road_class),
+        dropped_bands=() if keep_s1_descending else DROPPED_BANDS,
     ).run()
 
 
@@ -98,7 +113,7 @@ def norm_stats(
     ] = True,
     sar_clip: Annotated[
         Optional[Tuple[float, float]],
-        typer.Option(help="Input (LOW, HIGH). Clip SAR bands (VV/VH asc+desc) before stats"),
+        typer.Option(help="Input (LOW, HIGH). Clip SAR bands (VV/VH) before stats"),
     ] = None,
 ):
     """Pre-compute per-band mean and std over train split"""

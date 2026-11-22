@@ -65,6 +65,29 @@ def load_zone_roads(sat_cog_path, roads_parquet_path) -> ZoneRoads:
 
 
 
+def exclude_road_classes(zone: ZoneRoads, classes) -> tuple[ZoneRoads, dict]:
+    """Drop roads whose ``road_class`` is in ``classes``.
+
+    Returns the filtered zone and, per excluded class, the number of segments
+    removed and their length in zone CRS units (metres), measured after
+    clipping to the zone footprint. Every class in ``classes`` gets an entry.
+    """
+    classes = tuple(classes)
+    roads = zone.roads
+    stats = {cls: {"segments": 0, "length_m": 0.0} for cls in classes}
+    if not classes or roads.empty:
+        return zone, stats
+    if "road_class" not in roads.columns:
+        raise ValueError("Road frame has no 'road_class' column; cannot exclude road classes.")
+
+    excluded = roads["road_class"].isin(classes)
+    for cls, group in roads[excluded].groupby("road_class"):
+        stats[cls] = {"segments": int(len(group)), "length_m": float(group.geometry.length.sum())}
+    if excluded.any():
+        print(f"Excluding {int(excluded.sum())} road segments of class {', '.join(classes)}")
+    return ZoneRoads(roads[~excluded], zone.image_metadata), stats
+
+
 class LabelGenerator(ABC):
     """Create tiled output labels (raster, graph) and return written paths."""
     name: str

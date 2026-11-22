@@ -16,14 +16,18 @@ pixel coordinates (col, row), with r/c the tile row and column:
     |  gap          |  near_dup     | road|
     |  dangling_stub|  unnoded_x    |     |
     |  zone_edge ^  |               |     |
+    |  carriageways |               |     |
     +---------------+---------------+     |
     | r1_c0         | r1_c1         |     |
-    |  carriageways |  (no roads:   |     |
-    |  track        |   dropped)    |     |
-    |  slipway      |               |     |
+    |  track        |  (no roads:   |     |
+    |  slipway      |   dropped)    |     |
+    |  (only these) |               |     |
     +---------------+---------------+-----+
     |                strip                |
     +-------------------------------------+
+
+r1_c0 holds only the excluded classes (Track, Slipway), so it has roads in
+the source layer but none in the raw labels.
 
 The val and test zones are one tile each, with one plain road, and sit well
 away from the train zone so their roads never overlap.
@@ -31,7 +35,8 @@ away from the train zone so their roads never overlap.
 Adding a synthetic case
 -----------------------
 1. Pick a tile in the train zone that has room. Don't use ``EMPTY_TILE``: it
-   must stay road-free. Keep roads at least about 2 px (20 m) inside tile
+   must stay road-free. Don't put a road of a kept class in
+   ``EXCLUDED_ONLY_TILE``: it must hold only Track and Slipway. Keep roads at least about 2 px (20 m) inside tile
    edges unless the case is about edges, because masks are buffered and
    rasterised with ``all_touched``.
 2. Add a ``CaseSpec`` to ``CASES`` with a unique ``name``, the tile, a
@@ -39,8 +44,9 @@ Adding a synthetic case
    ...])`` in zone pixel coordinates. One pixel is 10 m.
 3. Tests look the case up with ``zone.cases["<name>"]`` to get its tile, its
    road row ids in ``roads.parquet``, and its roads in zone CRS metres.
-4. If the case adds or removes a kept tile, update ``EXPECTED_TILES`` in
-   ``test_generate.py``.
+4. If the case changes a tile's status, update ``test_generate.py``:
+   ``EXPECTED_TILES``, ``LEGACY_EXPECTED_TILES``, ``EXPECTED_TRAIN_STATUS``
+   and the counts in ``test_report_counts_tile_statuses_per_zone``.
 """
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -60,6 +66,7 @@ TILE_SIZE = 128  # small tiles keep the suite fast
 PATCH_SIZE = 64  # internal COG block size; must divide TILE_SIZE
 EDGE_STRIP = 40  # px; narrower than a tile, so never tiled
 EMPTY_TILE = "r1_c1"
+EXCLUDED_ONLY_TILE = "r1_c0"  # only Track and Slipway roads
 
 TRAIN_ZONE = "Synthetic_AlbanyThicket_-33p90_25p60_Rural"
 VAL_ZONE = "SyntheticVal_Fynbos_-33p95_25p65_Urban"
@@ -71,6 +78,11 @@ VAL_ORIGIN = (375_000.0, 6_250_000.0)
 TEST_ORIGIN = (380_000.0, 6_250_000.0)
 
 _SCALE, _BUFFER, _ = flatten_classification(CDNGI_ROAD_CLASSIFICATION)
+# Track and Slipway are now in the ignored section, so the ``roads`` command
+# no longer writes them. Give them the values a road parquet built before that
+# change holds, since ``generate`` must still exclude them from such files.
+_SCALE.update(Track="small", Slipway="small")
+_BUFFER.update(Track=3.0, Slipway=3.0)
 
 
 @dataclass(frozen=True)
@@ -103,8 +115,8 @@ CASES = [
         [("Other Road", [(150, 60), (230, 110)]), ("Other Road", [(150, 110), (230, 60)])],
     ),
     CaseSpec(
-        "parallel_carriageways", "r1_c0", "Two National Freeway carriageways 20 m apart, opposite directions",
-        [("National Freeway", [(10, 150), (118, 150)]), ("National Freeway", [(118, 152), (10, 152)])],
+        "parallel_carriageways", "r0_c0", "Two National Freeway carriageways 20 m apart, opposite directions",
+        [("National Freeway", [(10, 100), (110, 100)]), ("National Freeway", [(110, 102), (10, 102)])],
     ),
     CaseSpec("track", "r1_c0", "A Track segment", [("Track", [(20, 190), (100, 190)])]),
     CaseSpec("slipway", "r1_c0", "A Slipway segment", [("Slipway", [(20, 220), (100, 230)])]),
