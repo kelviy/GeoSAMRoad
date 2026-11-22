@@ -75,6 +75,60 @@ def generate(
 
 
 @app.command()
+def package_zones(
+    roads: Annotated[
+        Path,
+        typer.Option(help="The baseline roads parquet that `generate` was run with"),
+    ],
+    imagery_dir: Annotated[
+        Path,
+        typer.Option(help="Pre-split imagery root (train, val, test) that `generate` was run with"),
+    ],
+    dataset_dir: Annotated[
+        Path,
+        typer.Option(help="Baseline dataset directory written by `generate` (holds tile_status/)"),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(help="Directory to write one folder per zone into"),
+    ],
+    zone: Annotated[
+        Optional[List[str]],
+        typer.Option(help="Zone filename stem to package. Repeat for several; default all zones"),
+    ] = None,
+    overwrite: Annotated[
+        bool,
+        typer.Option(help="Repackage zones whose GeoPackage already holds cleaning work (old file kept as .bak)"),
+    ] = False,
+):
+    """Package zones for cleaning: a zone GeoPackage and a QGIS project per zone."""
+    from sentinel2data.cleaning.packager import ZoneHasCleaningWork, ZoneIsOpen, find_zones, package_zone
+
+    zones = find_zones(imagery_dir)
+    names = list(zone) if zone else sorted(zones)
+    unknown = [n for n in names if n not in zones]
+    if unknown:
+        raise typer.BadParameter(f"No zone COG under {imagery_dir} for: {', '.join(unknown)}")
+
+    refused = []
+    for name in names:
+        try:
+            folder = package_zone(
+                zones[name], roads_path=roads, dataset_dir=dataset_dir,
+                output_dir=output_dir, overwrite=overwrite,
+            )
+        except (ZoneHasCleaningWork, ZoneIsOpen) as exc:
+            refused.append(name)
+            typer.echo(f"Refused {name}: {exc}", err=True)
+            continue
+        typer.echo(f"Packaged {name} -> {folder.root}")
+
+    if refused:
+        typer.echo(f"{len(refused)} zone(s) not repackaged (cleaning work, or open elsewhere): {', '.join(refused)}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command()
 def roads(
     out: Annotated[
         Path, 
