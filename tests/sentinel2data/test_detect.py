@@ -7,6 +7,8 @@ inspects the ``flags`` and ``detector_runs`` layers.
 
 import json
 import shutil
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import geopandas as gpd
@@ -127,15 +129,19 @@ def flags_near(flags, line, distance=1.0):
     return flags[flags.geometry.distance(line) <= distance]
 
 
+def long_config(tmp_path):
+    return str(write_config(tmp_path / "long.yaml", max_length_m=1000.0))
+
+
+def short_config(tmp_path):
+    return str(write_config(tmp_path / "short.yaml", max_length_m=30.0))
+
+
 @pytest.fixture
 def long_stub_flags(zones, tmp_path):
     """Flags with a stub threshold long enough to make every dead-end road in the
     train zone a stub, edge-cut and out-of-scope roads included."""
-    run_detect(
-        zones,
-        "--detector-config",
-        str(write_config(tmp_path / "detectors.yaml", max_length_m=1000.0)),
-    )
+    run_detect(zones, "--detector-config", long_config(tmp_path))
     return read_flags(zones)
 
 
@@ -210,27 +216,142 @@ def test_an_unknown_config_key_is_rejected(zones, tmp_path):
     assert result.exit_code != 0 and "max_lenght_m" in result.output
 
 
-def test_a_rerun_replaces_pending_flags_instead_of_adding_copies(zones):
-    run_detect(zones)
-    run_detect(zones)
-    assert len(read_flags(zones)) == 1
+def read_flags_by_fid(zones, zone=TRAIN_ZONE):
+    return pyogrio.read_dataframe(gpkg(zones, zone), layer="flags", fid_as_index=True)
 
 
-def decide_all_flags(zones, decision, annotator="ann"):
-    flags = gpd.read_file(gpkg(zones), layer="flags")
-    flags["decision"], flags["annotator"] = decision, annotator
-    flags.to_file(gpkg(zones), layer="flags", driver="GPKG")
+def update_in_place(zones, layer, column, value, fids):
+    """Set ``column`` on rows ``fids`` of ``layer`` the way QGIS saves an edit:
+    in place, so fids stay.
+
+    Any UPDATE compiles GDAL's R-tree triggers, which call ``ST_*`` functions
+    plain SQLite lacks. Those trigger bodies run only when the fid changes, so
+    stand-ins that are never called are enough.
+    """
+    with closing(sqlite3.connect(gpkg(zones))) as con, con:
+        for name in ("ST_IsEmpty", "ST_MinX", "ST_MaxX", "ST_MinY", "ST_MaxY"):
+            con.create_function(name, 1, lambda _, n=name: pytest.fail(f"{n} called"))
+        con.executemany(
+            f'UPDATE "{layer}" SET "{column}" = ? WHERE fid = ?',
+            [(value, int(fid)) for fid in fids],
+        )
+
+
+def decide(zones, fids, decision, annotator="ann"):
+    update_in_place(zones, "flags", "decision", decision, fids)
+    update_in_place(zones, "flags", "annotator", annotator, fids)
+
+
+def test_running_detect_twice_with_the_same_config_leaves_the_flags_unchanged(
+    zones, tmp_path
+):
+    run_detect(zones, "--detector-config", long_config(tmp_path))
+    before = read_flags_by_fid(zones)
+    assert len(before) > 1
+
+    run_detect(zones, "--detector-config", long_config(tmp_path))
+    pd.testing.assert_frame_equal(read_flags_by_fid(zones), before)
+
+
+def test_loosening_a_threshold_adds_pending_flags_without_duplicating(zones, tmp_path):
+    run_detect(zones, "--detector-config", short_config(tmp_path))
+    short = read_flags_by_fid(zones)
+    run_detect(zones, "--detector-config", long_config(tmp_path))
+    loose = read_flags_by_fid(zones)
+
+    assert len(short) == 1 and len(loose) > 1
+    assert not loose["flag_key"].duplicated().any()
+    pd.testing.assert_frame_equal(loose.loc[short.index], short)
+    assert (loose["decision"] == "pending").all()
+
+
+def test_tightening_a_threshold_removes_only_the_pending_flags_it_no_longer_finds(
+    zones, tmp_path
+):
+    run_detect(zones, "--detector-config", short_config(tmp_path))
+    short = read_flags_by_fid(zones)
+    run_detect(zones, "--detector-config", long_config(tmp_path))
+    run_detect(zones, "--detector-config", short_config(tmp_path))
+
+    pd.testing.assert_frame_equal(read_flags_by_fid(zones), short)
 
 
 @pytest.mark.parametrize("decision", ["real", "not_defect", "needs_qgis"])
-def test_a_rerun_never_touches_a_decided_flag(decision, zones):
+def test_a_decided_flag_survives_a_rerun_that_no_longer_finds_it(
+    decision, zones, tmp_path
+):
+    run_detect(zones, "--detector-config", long_config(tmp_path))
+    decide(zones, read_flags_by_fid(zones).index, decision)
+    decided = read_flags_by_fid(zones)
+
+    run_detect(zones, "--detector-config", short_config(tmp_path))
+    pd.testing.assert_frame_equal(read_flags_by_fid(zones), decided)
+
+
+def test_tightening_keeps_decided_flags_and_drops_only_pending_ones(zones, tmp_path):
+    run_detect(zones, "--detector-config", short_config(tmp_path))
+    (still_found,) = read_flags_by_fid(zones).index
+    run_detect(zones, "--detector-config", long_config(tmp_path))
+    decided_fid = read_flags_by_fid(zones).index.drop(still_found)[0]
+    decide(zones, [decided_fid], "real")
+
+    run_detect(zones, "--detector-config", short_config(tmp_path))
+    after = read_flags_by_fid(zones)
+    assert set(after.index) == {still_found, decided_fid}
+    assert after.loc[decided_fid, ["decision", "annotator"]].tolist() == ["real", "ann"]
+    assert after.loc[still_found, "decision"] == "pending"
+
+
+def test_a_pending_flag_whose_roads_changed_is_replaced_with_the_current_raw_ids(
+    zones, tmp_path, shared_synthetic_zone
+):
+    # An isolated branch of two rows, flagged at its start. Deleting its last
+    # row leaves the start, and so the flag location, where it was.
+    first, last = shared_synthetic_zone.cases["split_dead_end"].geometries
+    run_detect(zones, "--detector-config", long_config(tmp_path))
+    labels = pyogrio.read_dataframe(gpkg(zones), layer="labels", fid_as_index=True)
+    last_fid = labels.index[labels["raw_id"] == raw_id_of(zones, last)]
+    update_in_place(zones, "labels", "status", "deleted", last_fid)
+
+    run_detect(zones, "--detector-config", long_config(tmp_path))
+    assert flags_near(read_flags(zones), first)["raw_ids"].tolist() == [
+        str(raw_id_of(zones, first))
+    ]
+
+
+def test_tightening_until_nothing_is_found_removes_every_pending_flag(zones, tmp_path):
     run_detect(zones)
-    decide_all_flags(zones, decision)
-    before = read_flags(zones)
+    run_detect(
+        zones,
+        "--detector-config",
+        str(write_config(tmp_path / "c.yaml", max_length_m=20.0)),
+    )
+    assert len(read_flags(zones)) == 0
+
+
+def test_a_disabled_detector_keeps_its_pending_flags(zones, tmp_path):
+    run_detect(zones)
+    before = read_flags_by_fid(zones)
+    run_detect(
+        zones,
+        "--detector-config",
+        str(write_config(tmp_path / "c.yaml", enabled=False)),
+    )
+    pd.testing.assert_frame_equal(read_flags_by_fid(zones), before)
+
+
+def test_a_pending_flag_with_a_decided_flags_key_is_removed(zones):
+    # Two flags with one key, as an older run or a manual edit could leave.
+    # The pending one comes first.
+    run_detect(zones)
+    (pending_fid,) = read_flags_by_fid(zones).index
+    copy = read_flags(zones)
+    pyogrio.write_dataframe(copy, gpkg(zones), layer="flags", append=True)
+    decided_fid = read_flags_by_fid(zones).index.drop(pending_fid)[0]
+    decide(zones, [decided_fid], "real")
 
     run_detect(zones)
-    after = read_flags(zones)
-    pd.testing.assert_frame_equal(after, before)
+    assert read_flags_by_fid(zones).index.tolist() == [decided_fid]
 
 
 def test_a_zone_open_in_qgis_is_refused_and_the_others_still_run(zones):

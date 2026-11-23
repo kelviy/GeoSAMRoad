@@ -1,8 +1,10 @@
 """Detector runner: run every enabled detector over a zone GeoPackage and write
 its flags back into it.
 
-A run replaces the pending flags the run's detectors placed before, keeps every
-other flag, and records itself and its full config in ``detector_runs``.
+A run merges its flags into the ones already there by ``flag_key``: decided
+flags never change, pending flags found again stay put, pending flags not found
+again go, and new flags are added as pending. Each run is recorded with its
+full config in ``detector_runs``.
 """
 
 import json
@@ -91,7 +93,7 @@ def detect_zone(gpkg, config: DetectorConfig) -> Counter:
     found = [DETECTORS[name](zone, config).assign(detector=name) for name in names]
     if found:
         flags = _as_flag_rows(pd.concat(found, ignore_index=True), zone.roads.crs)
-        _replace_pending_flags(gpkg, flags, names)
+        _merge_flags(gpkg, flags, names)
     _record_run(gpkg, config)
     return Counter(t for flags in found for t in flags["type"])
 
@@ -111,27 +113,31 @@ def _as_flag_rows(found: pd.DataFrame, crs) -> gpd.GeoDataFrame:
     )
 
 
-def _replace_pending_flags(gpkg, flags: gpd.GeoDataFrame, detectors):
-    """Swap the pending flags ``detectors`` placed before for ``flags``.
+def _merge_flags(gpkg, found: gpd.GeoDataFrame, detectors):
+    """Merge this run's ``found`` flags into the flags layer, matching by ``flag_key``.
 
-    A flag someone decided on or saved (it has an ``annotator``) is never
-    touched, and a new flag with the same key as such a flag is dropped. So
-    is a second new flag with the same key.
+    Only pending detector output from ``detectors`` is replaceable. A
+    replaceable flag found again stays as it is, fid included; one not found
+    again is deleted. A found flag whose key no flag has yet is appended as
+    pending. Every other flag, decided or saved by someone, is never touched.
     """
     existing = pyogrio.read_dataframe(
         gpkg, layer=FLAGS_LAYER, read_geometry=False, fid_as_index=True
     )
-    replace = existing["detector"].isin(detectors) & is_pending_detector_output(
+    replaceable = existing["detector"].isin(detectors) & is_pending_detector_output(
         existing
     )
+    stored_keys, found_keys = existing["flag_key"], found["flag_key"]
+    # A replaceable flag also goes when a kept flag already has its key.
+    taken = stored_keys.isin(stored_keys[~replaceable])
+    repeat = stored_keys.where(replaceable).duplicated() & replaceable
+    stale = replaceable & (~stored_keys.isin(found_keys) | taken | repeat)
     with closing(sqlite3.connect(gpkg)) as con, con:
         con.executemany(
             f'DELETE FROM "{FLAGS_LAYER}" WHERE fid = ?',
-            [(int(fid),) for fid in existing.index[replace]],
+            [(int(fid),) for fid in existing.index[stale]],
         )
-    kept_keys = existing.loc[~replace, "flag_key"].dropna().tolist()
-    keys = flags["flag_key"]
-    new = flags[~keys.isin(kept_keys) & ~keys.duplicated()]
+    new = found[~found_keys.isin(stored_keys[~stale]) & ~found_keys.duplicated()]
     if len(new):
         pyogrio.write_dataframe(new, gpkg, layer=FLAGS_LAYER, append=True)
 

@@ -146,17 +146,18 @@ def stub_flags(zone: Zone, config: DetectorConfig) -> gpd.GeoDataFrame:
         & zone.in_kept_tiles(dead_points)
     )
     raw_ids = zone.roads["raw_id"].to_numpy()
+    flag_raw_ids = [_join_raw_ids(raw_ids[members[b]]) for b in np.flatnonzero(stub)]
+    points = dead_points[stub]
     return gpd.GeoDataFrame(
         {
-            "flag_key": [_point_key("stub", p) for p in dead_points[stub]],
+            "flag_key": [
+                flag_key("stub", "stub", r, p) for r, p in zip(flag_raw_ids, points)
+            ],
             "type": "stub",
             "source": "labels",
-            "raw_ids": pd.array(
-                [_join_raw_ids(raw_ids[members[b]]) for b in np.flatnonzero(stub)],
-                dtype="string",
-            ),
+            "raw_ids": pd.array(flag_raw_ids, dtype="string"),
         },
-        geometry=gpd.GeoSeries(dead_points[stub], crs=zone.roads.crs),
+        geometry=gpd.GeoSeries(points, crs=zone.roads.crs),
     )
 
 
@@ -166,9 +167,15 @@ def _join_raw_ids(raw_ids):
     return ",".join(map(str, ids)) or None
 
 
-def _point_key(detector, point) -> str:
-    """A flag key from the flag's location, rounded to the metre."""
-    return f"{detector}:{point.x:.0f},{point.y:.0f}"
+def flag_key(detector, flag_type, raw_ids, point) -> str:
+    """The key a re-run matches flags by: ``<detector>:<type>:<raw_ids>@<x>,<y>``,
+    with the location rounded to the metre.
+
+    Two runs on the same zone with the same roads give the same key. A flag
+    found again can differ from the stored one only in position, within the
+    same 1 m cell, so the runner leaves the stored one as it is.
+    """
+    return f"{detector}:{flag_type}:{raw_ids or ''}@{point.x:.0f},{point.y:.0f}"
 
 
 Detector = Callable[[Zone, DetectorConfig], gpd.GeoDataFrame]

@@ -2,7 +2,7 @@
 
 How `sentinel2data.cli package-zones` turns the frozen baseline into one zone package per zone, the folder an annotator opens in QGIS to clean that zone.
 
-> **Status, 2026-11-23.** This feature is in progress. The packager landed in commit `6a5f2b3` and KEL-9 is in review, with its manual QGIS check still open. KEL-47 added the flag key, the detector-run layer and the pending-output rule to the contract. KEL-48 added the `detect` command and its first detector, `stub`, described in [detectors.md](detectors.md). The other detectors, the review queue and the assembler from KEL-5 and KEL-11 do not exist yet. The usage manual is [docs/cleaning/zone-package.md](../cleaning/zone-package.md).
+> **Status, 2026-11-23.** This feature is in progress. The packager landed in commit `6a5f2b3` and KEL-9 is in review, with its manual QGIS check still open. KEL-47 added the flag key, the detector-run layer and the pending-output rule to the contract. KEL-48 added the `detect` command and its first detector, `stub`, described in [detectors.md](detectors.md), and KEL-49 made its re-runs idempotent. The other detectors, the review queue and the assembler from KEL-5 and KEL-11 do not exist yet. The usage manual is [docs/cleaning/zone-package.md](../cleaning/zone-package.md).
 
 ## Core idea
 
@@ -27,7 +27,7 @@ Cleaning happens per zone, not per tile. For each zone, the packager writes one 
 
 - **The contract.** `cleaning/contract.py` fixes the layer names and the allowed values. Label `status` is one of `kept`, `modified`, `added`, `deleted` or `proposed`. `defect` is one of `gap`, `stub`, `misalignment`, `phantom`, `missing` or `temporal`, or empty. Flag `type` is one of `gap`, `stub`, `duplicate`, `crossing`, `missing?` or `phantom?`. Flag `decision` is one of `pending`, `real`, `not_defect` or `needs_qgis`.
 - **The flag schema.** `FLAG_FIELDS` in `contract.py` holds the flag field names, order and types: `flag_key`, `type`, `detector`, `source`, `raw_ids`, `proposal_fid`, `decision` and `annotator`. `empty_flags` builds the layer from it, and the QGIS project gives every field in it a config. Every field except `decision` and `annotator` is read-only in QGIS.
-- **The flag key.** `flag_key` is a string the detector sets. It must be the same for the same suspected defect on every run, so a re-run can match the flag it placed before and leave a decided flag alone. The contract fixes only the field. How each detector builds its key comes with the detectors.
+- **The flag key.** `flag_key` is a string the detector sets. It must be the same for the same suspected defect on every run, so a re-run can match the flag it placed before and leave a decided flag alone. The contract fixes only the field. [detectors.md](detectors.md) describes how the key is built and how a re-run uses it.
 - **The detector-run layer.** `detector_runs` gets one row per detector run: `run_at`, an ISO 8601 UTC time, and `config`, the run's full detector config as JSON. `DETECTOR_RUN_FIELDS` in `contract.py` holds the schema.
 - **`raw_id` depends only on the clipped geometry and the road class.** The sort key is the hex WKB of the line, then `road_class`. Shuffling the parquet rows gives the same `raw_id` values, and a test checks this. A road that leaves and re-enters the zone becomes one row per piece.
 - **What counts as cleaning work.** `zone_cleaning_work` reports any of the following:
