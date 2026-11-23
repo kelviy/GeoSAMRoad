@@ -22,3 +22,6 @@ wandb/*
 .env
 # MkDocs build output
 site/
+
+# Agent worktrees
+.claude/worktrees/
