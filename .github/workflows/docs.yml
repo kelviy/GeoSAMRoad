@@ -20,11 +20,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - name: Install docs tools
-        run: uv sync --only-group docs --frozen
-      - name: Build (strict, with the sensitive-content scan)
-        env:
-          NO_MKDOCS_2_WARNING: "1"
-        run: .venv/bin/mkdocs build --strict
+        run: uv sync --only-group site --frozen
+      - name: Build (strict) and scan for sensitive content
+        run: .venv/bin/python tools/build_docs.py
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

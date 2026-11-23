@@ -15,11 +15,11 @@ When a change alters how a feature behaves, update its explainer in the same cha
 
 ## Docs site
 
-`docs/` is published to <https://kelviy.github.io/GeoSAMRoad/> with MkDocs Material (`mkdocs.yml`). Every push to `semi-automation` builds and deploys it. Guides in `docs/guides/` tell teammates how to do the work. Explainers say how it works.
+`docs/` is published to <https://kelviy.github.io/GeoSAMRoad/> with Zensical, which reads `mkdocs.yml`. Every push to `semi-automation` builds and deploys it. Guides in `docs/guides/` tell teammates how to do the work. Explainers say how it works.
 
 When a change alters a command, file or workflow that a guide describes, update the guide in the same change. A new page goes in the `nav` of `mkdocs.yml`.
 
-Before finishing any docs change, run `.venv/bin/mkdocs build --strict`. It fails on broken links, and its hook `tools/mkdocs_sensitive_scan.py` fails on local paths, Google Drive or Docs links and credentials. The site is public. Write `<repo>` or `<data-dir>` for paths, "Ask kelviy for the link" for shared links, and use no real names except `kelviy`. Install the tools with `uv pip install -p .venv/bin/python mkdocs mkdocs-material`, never `uv sync`.
+Before finishing any docs change, run `.venv/bin/python tools/build_docs.py`, the same check CI runs. It fails on broken links and anchors, and on local paths, Google Drive or Docs links and credentials. The site is public. Write `<repo>` or `<data-dir>` for paths, "Ask kelviy for the link" for shared links, and use no real names except `kelviy`. Install the tools with `uv pip install -p .venv/bin/python zensical`, never `uv sync`.
 
 ## Agent skills
 

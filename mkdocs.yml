@@ -91,6 +91,3 @@ nav:
       - Decisions:
           - adr/0001-aerial-authority-with-temporal-override.md
   - Glossary: glossary.md
-
-hooks:
-  - tools/mkdocs_sensitive_scan.py
