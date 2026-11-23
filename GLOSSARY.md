@@ -67,6 +67,14 @@ _Avoid_: Checker, rule, triage
 A marker a detector places at a suspected defect location, possibly involving several roads or none (a missing road). An annotator decides whether it is a real defect. A flag never changes a label by itself.
 _Avoid_: Issue, warning, annotation
 
+**Duplicate**:
+A flag type: a road row that lies within a set distance of one other row over most of its length, provisionally 10 m over 80%. It is a flag only, because parallel carriageways match it too.
+_Avoid_: Overlap, double
+
+**Unnoded crossing**:
+A flag type: two roads that cross at a point that is not a vertex of both, so the road graph has no junction there. It is a flag only, because bridges and underpasses match it too.
+_Avoid_: Intersection, X-crossing
+
 **Flag key**:
 A flag's identity across detector runs: the same suspected defect gets the same key every run, so a re-run can find the flag it placed before.
 _Avoid_: Flag id, fid

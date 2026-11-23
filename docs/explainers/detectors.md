@@ -2,7 +2,7 @@
 
 How `sentinel2data.cli detect` runs the detectors over packaged zones and writes their flags into each zone GeoPackage.
 
-> **Status, 2026-11-23.** KEL-48 built the runner and the first detector, `stub`. KEL-49 made re-runs idempotent. The gap, duplicate, crossing and second-source detectors come later, as does the review queue. [zone-cleaning.md](zone-cleaning.md) describes the zone package itself.
+> **Status, 2026-11-23.** KEL-48 built the runner and the first detector, `stub`. KEL-49 made re-runs idempotent. KEL-50 added `duplicate` and `crossing`, which flag only. The gap and second-source detectors come later, as does the review queue. [zone-cleaning.md](zone-cleaning.md) describes the zone package itself.
 
 ## Core idea
 
@@ -17,7 +17,7 @@ A detector is a model-agnostic check that reads only the zone GeoPackage and one
 5. **Run the detectors.** Each enabled detector in `DETECTORS` returns its flags: `flag_key`, `type`, `source`, `raw_ids` and a geometry. The runner adds `detector`, `decision = pending` and empty `proposal_fid` and `annotator`.
 6. **Merge the flags.** `_merge_flags` matches this run's flags against the stored ones by `flag_key`, as the next section describes.
 7. **Record the run.** `_record_run` appends a row to `detector_runs`: `run_at` in UTC and the config as JSON.
-8. **Report.** The CLI prints the flag count per type for each zone, then a line of totals, for example `All zones: stub 1`.
+8. **Report.** The CLI prints the flag count per type for each zone, then a line of totals, for example `All zones: crossing 1, duplicate 1, stub 1`.
 
 ## Re-runs
 
@@ -50,11 +50,34 @@ A stub is a dead-end branch shorter than `stub.max_length_m`, which is provision
 - **`raw_ids`.** The sorted `raw_id` values of the rows in the branch. Rows with no `raw_id`, which are `added` rows, are left out. A row is matched to a branch when the branch covers it, so a duplicate row can appear in the `raw_ids` of its copy's branch too. On the 60 real zones, 65 of 313,964 rows match more than one branch, and every one is an exact or overlapping duplicate.
 - **`source`.** `labels`.
 
+## The duplicate detector
+
+A duplicate is a road row that lies within `duplicate.max_distance_m` of one other row over at least `duplicate.min_overlap_share` of its length. The defaults are 10 m and 80%. The detector only flags it. It never proposes deleting a row, because the two carriageways of a dual road also run close and parallel.
+
+- **Coverage.** For each row, the detector buffers every other row by the distance and measures how much of the row lies inside one of those buffers. Candidate pairs come from one STRtree `intersects` query of the buffers.
+- **One other row.** A row's coverage is measured against each other row on its own. A row covered 50% by one road and 50% by another is not a duplicate.
+- **Short rows are skipped.** A row shorter than `duplicate.min_length_m`, 20 m by default, is never the covered row. Near a junction, most of a short row lies within 10 m of the road it meets. On the 60 zones, dropping the cut raises the count from 254 duplicates to 5,569.
+- **Where the flag goes.** It goes at the middle of the covered row, which must lie inside or touch a `kept` tile.
+- **One flag per pair.** If each row covers the other, the pair gets one flag, on the shorter row whose middle is in scope. A row that duplicates two others gets two flags.
+- **Flag key and `raw_ids`.** `duplicate:duplicate:<raw_ids>@<x>,<y>` from the flag point, where `raw_ids` are the `raw_id` values of both rows.
+
+## The crossing detector
+
+An unnoded crossing is a point where two roads cross and the point is not a vertex of both. The detector only flags it. Joining the roads there would also join a bridge to the road under it.
+
+- **Candidates.** One STRtree `crosses` query over the roads gives the pairs. Their intersection points are the candidate crossings, one flag each, so two roads that cross twice get two flags.
+- **Shared vertex.** A crossing that is a vertex of both roads is a junction and gets no flag. The check is an exact match, so a junction whose two vertices are 1 mm apart is flagged. A crossing that is a vertex of one road only is still flagged, because the other road has no node there.
+- **Touches.** A point where one road ends on the other is not a crossing.
+- **Scope.** The crossing point must lie inside or touch a `kept` tile.
+- **Flag key and `raw_ids`.** `crossing:crossing:<raw_ids>@<x>,<y>`, where `raw_ids` are the `raw_id` values of both roads.
+- **No thresholds.** The `crossing` config section has only `enabled`.
+
 ## Details that matter
 
 - **The config is the only place for thresholds.** The dataclasses in `detectors.py` have no defaults. Every value comes from the YAML, so the file the run records is the whole truth about that run.
 - **`detector_runs` records every run,** even one with every detector disabled.
 - **The counts are what the detectors found this run.** A found flag that matches a stored flag, or another found flag, is counted but not written again.
+- **The edge-cut rule is for stubs only.** A road the zone edge cut is still a real duplicate or a real crossing inside the zone, so `duplicate` and `crossing` don't skip it.
 - **`deleted` and `proposed` rows are not roads.** A pending gap connector does not connect anything for the stub detector.
 - **Multi-part label geometries are split** into one road per part, all with the same labels fid.
 - **Flags are 2D.** Labels from a real zone are `LineString Z`. `load_zone` drops the Z, so every flag point is 2D.
@@ -65,7 +88,9 @@ A stub is a dead-end branch shorter than `stub.max_length_m`, which is provision
 - **Model-agnostic, GeoPackage-only input.** KEL-11 user story 13 keeps cleaned test labels from being biased towards the project's own model. The tests run `detect` on a zones folder holding only the GeoPackages.
 - **One config, recorded per run.** KEL-11 user story 14: tune without code changes, and know which settings produced each flag.
 - **Kept tiles only, and no edge-cut ends.** KEL-11 user stories 7 and 6: flags never point where annotators are told not to edit, and clipping artefacts don't flood the queue. The check is on the flag point, not only the road, because a road that touches a kept tile can have its dead end in a dropped one.
-- **Vectorised STRtree queries.** The KEL-11 dry run found that per-segment loops with geometry unions don't finish on dense urban zones. With these queries, `detect` runs all 60 zones in 16 s, placing 1,532 stub flags.
+- **Vectorised STRtree queries.** The KEL-11 dry run found that per-segment loops with geometry unions don't finish on dense urban zones. With these queries, `detect` with all three detectors runs all 60 zones in 57 s. It places 1,532 stubs, 254 duplicates and 119 crossings. The densest zone, CapeTown_Fynbos_-33p96_18p61_Urban, takes 10 s.
+- **Duplicates and crossings are flag only.** KEL-11 user stories 4 and 5. Parallel carriageways and bridges have the same geometry as these defects, so an annotator decides.
+- **Shared vertices, not `crosses` alone.** The KEL-11 dry run counted 1,496 crossings over the 60 zones. That was every `crosses` pair. Of the 1,381 crossing points inside kept tiles, 1,262 are vertices of both roads: roads stored as one row through a junction. Only the other 119 are unnoded.
 - **Merge by key, keep decided flags.** KEL-11 user story 15 asks that re-running on a partly reviewed zone never wipes work, so the team lead can tune thresholds mid-cleaning. KEL-49 also keeps pending flags that are found again in place, so their fids are stable across re-runs.
 
 ## Weak spots and ideas
@@ -79,6 +104,10 @@ A stub is a dead-end branch shorter than `stub.max_length_m`, which is provision
 - **The connect tolerance is very tight.** Suspected. 0.5 m treats a road that stops 1 m short of another as a dead end. That is right for a stub but means near-misses show up as stubs until the gap detector exists.
 - **A key-format change gives decided flags a pending twin.** Suspected. A decided flag keeps the key it was placed with. If a detector's key format changes, as it did for `stub` in KEL-49, the next run adds a pending twin next to each decided flag. When the stub key changed, the real zone packages had no `flag_key` field yet, so no decided flag uses the old format.
 - **Removing a pending proposal does not remove its `proposed` row.** Observed. No detector writes proposals yet. The gap detector must delete the row with its flag.
+- **A duplicate flag sits on the middle of the row, not the overlap.** Suspected. A row that is 80% covered can have its uncovered 20% in the middle, and then the flag lies a little off the second road.
+- **Short duplicates are missed.** By design. An exact copy of a row shorter than 20 m gets no flag.
+- **Carriageways farther apart than 10 m are not flagged.** Observed. The synthetic `parallel_carriageways` pair is 20 m apart and gets a flag only with a wider distance. The test uses 25 m. Suspected: real dual carriageways wider than 10 m are not flagged at the default either. Their spacing on the 60 zones was not measured.
+- **The shared-vertex check is exact.** Suspected. A junction drawn with two vertices a few millimetres apart counts as unnoded. The 119 crossings on the 60 zones were not checked for this.
 
 ## Code map
 
@@ -87,8 +116,10 @@ A stub is a dead-end branch shorter than `stub.max_length_m`, which is provision
 - `cleaning/detectors.py`, `DetectorConfig`: the config schema and its strict YAML parser.
 - `cleaning/detectors.py`, `Zone`, `DETECTORS`: what a detector sees, and the name-to-detector registry. The registry key must match a `DetectorConfig` field.
 - `cleaning/detectors.py`, `branches`, `dead_ends` and `stub_flags`: the stub detector.
+- `cleaning/detectors.py`, `duplicate_flags` and `crossing_flags`: the flag-only detectors. `_flags_from_labels` builds the flag rows for all three.
 - `cleaning/detectors.py`, `flag_key`: builds a flag key. Every detector uses it.
 - `cleaning/contract.py`, `is_pending_detector_output`: the rule that the runner and the packager share.
 - `cleaning/detect.py`, `detect_zone`: runs one zone, with the open-file and schema checks.
 - `cleaning/detect.py`, `load_zone`, `_as_flag_rows`, `_merge_flags` and `_record_run`: GeoPackage reads and writes. `_as_flag_rows` sets `decision = pending`; `_merge_flags` applies the re-run rule.
-- `tests/sentinel2data/test_detect.py`: end-to-end tests on the packaged synthetic zone.
+- `tests/sentinel2data/test_detect.py`: end-to-end tests of the runner and `stub` on the packaged synthetic zone.
+- `tests/sentinel2data/test_geometry_detectors.py`: end-to-end tests of `duplicate` and `crossing`.

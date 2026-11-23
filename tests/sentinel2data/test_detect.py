@@ -76,6 +76,11 @@ def read_flags(zones, zone=TRAIN_ZONE):
     return gpd.read_file(gpkg(zones, zone), layer="flags")
 
 
+def read_stub_flags(zones, zone=TRAIN_ZONE):
+    flags = read_flags(zones, zone)
+    return flags[flags["type"] == "stub"]
+
+
 def raw_id_of(zones, line):
     raw = gpd.read_file(gpkg(zones), layer="raw_labels")
     same = (raw.geometry.distance(line) < 1e-3) & (
@@ -88,7 +93,7 @@ def raw_id_of(zones, line):
 def test_dangling_stub_gets_a_stub_flag_at_its_dead_end(zones, shared_synthetic_zone):
     run_detect(zones)
 
-    flags = read_flags(zones)
+    flags = read_stub_flags(zones)
     stub_road = shared_synthetic_zone.cases["dangling_stub"].geometries[1]
     dead_end = Point(stub_road.coords[-1])
     assert len(flags) == 1
@@ -113,7 +118,7 @@ def test_the_stub_threshold_in_the_config_sets_which_dead_ends_are_stubs(
     # The dangling stub is 25 m long.
     config = write_config(tmp_path / "detectors.yaml", max_length_m=max_length_m)
     run_detect(zones, "--detector-config", str(config))
-    assert len(read_flags(zones)) == expected
+    assert len(read_stub_flags(zones)) == expected
 
 
 def test_a_disabled_detector_places_no_flags(zones, tmp_path):
@@ -122,19 +127,29 @@ def test_a_disabled_detector_places_no_flags(zones, tmp_path):
         "--detector-config",
         str(write_config(tmp_path / "detectors.yaml", enabled=False)),
     )
-    assert len(read_flags(zones)) == 0
+    assert len(read_stub_flags(zones)) == 0
 
 
 def flags_near(flags, line, distance=1.0):
     return flags[flags.geometry.distance(line) <= distance]
 
 
+def stub_only_config(path, max_length_m):
+    """Only the stub detector, with ``max_length_m``. The re-run tests change
+    this one threshold and count every flag."""
+    write_config(path, max_length_m=max_length_m)
+    config = yaml.safe_load(path.read_text())
+    config["duplicate"]["enabled"] = config["crossing"]["enabled"] = False
+    path.write_text(yaml.safe_dump(config))
+    return str(path)
+
+
 def long_config(tmp_path):
-    return str(write_config(tmp_path / "long.yaml", max_length_m=1000.0))
+    return stub_only_config(tmp_path / "long.yaml", max_length_m=1000.0)
 
 
 def short_config(tmp_path):
-    return str(write_config(tmp_path / "short.yaml", max_length_m=30.0))
+    return stub_only_config(tmp_path / "short.yaml", max_length_m=30.0)
 
 
 @pytest.fixture
@@ -189,9 +204,9 @@ def test_detect_runs_every_zone_by_default_and_prints_counts_per_zone_and_type(z
     result = run_detect(zones)
     for zone in ALL_ZONES:
         assert len(read_runs(zones, zone)) == 1
-    assert f"{TRAIN_ZONE}: stub 1" in result.output
+    assert f"{TRAIN_ZONE}: crossing 1, duplicate 1, stub 1" in result.output
     assert f"{VAL_ZONE}: no flags" in result.output
-    assert "All zones: stub 1" in result.output
+    assert "All zones: crossing 1, duplicate 1, stub 1" in result.output
 
 
 def test_zone_selects_the_zones_to_run_on(zones):
@@ -320,11 +335,11 @@ def test_a_pending_flag_whose_roads_changed_is_replaced_with_the_current_raw_ids
 
 
 def test_tightening_until_nothing_is_found_removes_every_pending_flag(zones, tmp_path):
-    run_detect(zones)
+    run_detect(zones, "--detector-config", short_config(tmp_path))
     run_detect(
         zones,
         "--detector-config",
-        str(write_config(tmp_path / "c.yaml", max_length_m=20.0)),
+        stub_only_config(tmp_path / "c.yaml", max_length_m=20.0),
     )
     assert len(read_flags(zones)) == 0
 
@@ -340,17 +355,17 @@ def test_a_disabled_detector_keeps_its_pending_flags(zones, tmp_path):
     pd.testing.assert_frame_equal(read_flags_by_fid(zones), before)
 
 
-def test_a_pending_flag_with_a_decided_flags_key_is_removed(zones):
+def test_a_pending_flag_with_a_decided_flags_key_is_removed(zones, tmp_path):
     # Two flags with one key, as an older run or a manual edit could leave.
     # The pending one comes first.
-    run_detect(zones)
+    run_detect(zones, "--detector-config", short_config(tmp_path))
     (pending_fid,) = read_flags_by_fid(zones).index
     copy = read_flags(zones)
     pyogrio.write_dataframe(copy, gpkg(zones), layer="flags", append=True)
     decided_fid = read_flags_by_fid(zones).index.drop(pending_fid)[0]
     decide(zones, [decided_fid], "real")
 
-    run_detect(zones)
+    run_detect(zones, "--detector-config", short_config(tmp_path))
     assert read_flags_by_fid(zones).index.tolist() == [decided_fid]
 
 

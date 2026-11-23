@@ -30,12 +30,27 @@ class StubConfig:
 
 
 @dataclass(frozen=True)
+class DuplicateConfig:
+    enabled: bool
+    max_distance_m: float
+    min_overlap_share: float
+    min_length_m: float
+
+
+@dataclass(frozen=True)
+class CrossingConfig:
+    enabled: bool
+
+
+@dataclass(frozen=True)
 class DetectorConfig:
     """Every detector threshold and toggle (``configs/detectors.yaml``)."""
 
     connect_tolerance_m: float
     zone_edge_tolerance_m: float
     stub: StubConfig
+    duplicate: DuplicateConfig
+    crossing: CrossingConfig
 
     @classmethod
     def load(cls, path) -> "DetectorConfig":
@@ -146,18 +161,105 @@ def stub_flags(zone: Zone, config: DetectorConfig) -> gpd.GeoDataFrame:
         & zone.in_kept_tiles(dead_points)
     )
     raw_ids = zone.roads["raw_id"].to_numpy()
-    flag_raw_ids = [_join_raw_ids(raw_ids[members[b]]) for b in np.flatnonzero(stub)]
-    points = dead_points[stub]
+    return _flags_from_labels(
+        "stub",
+        dead_points[stub],
+        [raw_ids[members[b]] for b in np.flatnonzero(stub)],
+        zone.roads.crs,
+    )
+
+
+def duplicate_flags(zone: Zone, config: DetectorConfig) -> gpd.GeoDataFrame:
+    """A ``duplicate`` flag for each row lying within ``duplicate.max_distance_m``
+    of one other row over at least ``duplicate.min_overlap_share`` of its length.
+
+    Flag only: parallel carriageways look the same, so nothing is proposed. The
+    flag is a point at the middle of the covered row, which must lie in or
+    touch a kept tile, and names both rows. A pair where each row covers the
+    other gets one flag, on the shorter row that qualifies. Rows shorter than
+    ``duplicate.min_length_m`` are never the covered row.
+    """
+    cfg = config.duplicate
+    geoms = np.asarray(zone.roads.geometry.values)
+    lengths = shapely.length(geoms)
+    buffers = shapely.buffer(geoms, cfg.max_distance_m)
+    other, row = shapely.STRtree(geoms).query(buffers, predicate="intersects")
+    keep = (other != row) & (lengths[row] >= cfg.min_length_m)
+    other, row = other[keep], row[keep]
+    covered = shapely.length(shapely.intersection(geoms[row], buffers[other]))
+    is_dup = covered >= cfg.min_overlap_share * lengths[row]
+    row, other = row[is_dup], other[is_dup]
+    points = shapely.line_interpolate_point(geoms[row], 0.5, normalized=True)
+    scoped = zone.in_kept_tiles(points)
+    row, other, points = row[scoped], other[scoped], points[scoped]
+    # One flag per pair, on its shorter row.
+    pairs = np.sort(np.stack([row, other], axis=1), axis=1)
+    by_length = np.lexsort((row, lengths[row]))
+    _, first = np.unique(pairs[by_length], axis=0, return_index=True)
+    pick = by_length[first]
+    raw_ids = zone.roads["raw_id"].to_numpy()
+    return _flags_from_labels(
+        "duplicate",
+        points[pick],
+        [raw_ids[pair] for pair in pairs[pick]],
+        zone.roads.crs,
+    )
+
+
+def crossing_flags(zone: Zone, config: DetectorConfig) -> gpd.GeoDataFrame:
+    """A ``crossing`` flag at each point where two roads cross and the point is
+    not a vertex of both.
+
+    Flag only: a bridge or underpass crosses without a junction too. A point
+    where one road ends on the other is a touch, not a crossing.
+    """
+    del config  # no thresholds
+    geoms = np.asarray(zone.roads.geometry.values)
+    a, b = shapely.STRtree(geoms).query(geoms, predicate="crosses")
+    a, b = a[a < b], b[a < b]
+    points, pair = shapely.get_parts(
+        shapely.intersection(geoms[a], geoms[b]), return_index=True
+    )
+    a, b = a[pair], b[pair]
+    vertices = np.asarray(
+        shapely.multipoints(
+            shapely.get_coordinates(geoms),
+            indices=np.repeat(
+                np.arange(len(geoms)), shapely.get_num_coordinates(geoms)
+            ),
+        )
+    )
+    noded = shapely.intersects(points, vertices[a]) & shapely.intersects(
+        points, vertices[b]
+    )
+    at_an_end = shapely.intersects(
+        points, shapely.boundary(geoms[a])
+    ) | shapely.intersects(points, shapely.boundary(geoms[b]))
+    flag = ~noded & ~at_an_end & zone.in_kept_tiles(points)
+    raw_ids = zone.roads["raw_id"].to_numpy()
+    return _flags_from_labels(
+        "crossing",
+        points[flag],
+        [raw_ids[[i, j]] for i, j in zip(a[flag], b[flag])],
+        zone.roads.crs,
+    )
+
+
+def _flags_from_labels(flag_type, points, raw_id_groups, crs) -> gpd.GeoDataFrame:
+    """Flags of ``flag_type`` from the labels, one per point. The detector has
+    the same name as the flag type."""
+    flag_raw_ids = [_join_raw_ids(ids) for ids in raw_id_groups]
     return gpd.GeoDataFrame(
         {
             "flag_key": [
-                flag_key("stub", "stub", r, p) for r, p in zip(flag_raw_ids, points)
+                flag_key(flag_type, flag_type, r, p)
+                for r, p in zip(flag_raw_ids, points)
             ],
-            "type": "stub",
+            "type": flag_type,
             "source": "labels",
             "raw_ids": pd.array(flag_raw_ids, dtype="string"),
         },
-        geometry=gpd.GeoSeries(points, crs=zone.roads.crs),
+        geometry=gpd.GeoSeries(points, crs=crs),
     )
 
 
@@ -182,4 +284,8 @@ Detector = Callable[[Zone, DetectorConfig], gpd.GeoDataFrame]
 
 # Detector name -> detector. The name is also its config section and the
 # ``detector`` field of its flags.
-DETECTORS: dict[str, Detector] = {"stub": stub_flags}
+DETECTORS: dict[str, Detector] = {
+    "stub": stub_flags,
+    "duplicate": duplicate_flags,
+    "crossing": crossing_flags,
+}

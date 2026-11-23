@@ -14,3 +14,18 @@ zone_edge_tolerance_m: 1.0
 stub:
   enabled: true
   max_length_m: 30.0
+
+# Duplicate, flag only: a road row with at least min_overlap_share of its
+# length within max_distance_m of one other row. Rows shorter than
+# min_length_m are skipped: near a junction most of a short row lies within
+# max_distance_m of the road it meets.
+duplicate:
+  enabled: true
+  max_distance_m: 10.0
+  min_overlap_share: 0.8
+  min_length_m: 20.0
+
+# Unnoded crossing, flag only: two roads that cross at a point that is not a
+# vertex of both.
+crossing:
+  enabled: true
