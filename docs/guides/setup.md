@@ -4,8 +4,8 @@ Set up the repo, its Python environment, QGIS and the review queue plugin on Lin
 
 You do this once per computer. When you finish, QGIS 3.44 or later is installed, the **ROSA review queue** plugin is enabled, and your computer account has a full name for QGIS to record on your edits. Terms such as zone package and review queue are defined in the [glossary](../glossary.md).
 
-!!! warning "macOS: expected to work, not yet tested"
-    Every step below has a macOS variant. Nobody has run them on a Mac yet. If a step fails on your Mac, tell kelviy what you saw. Windows is not covered.
+!!! note "Linux and macOS"
+    Every step below has been run on Linux and on macOS. Where the two differ, the step gives both. Windows is not covered.
 
 ## Clone the repo
 
@@ -61,7 +61,7 @@ Install QGIS 3.44 or later. The repo's QGIS tests run on QGIS 3.44.
     qgis
     ```
 
-- **macOS** (expected to work, not yet tested). Download the official macOS installer from the [QGIS download page](https://qgis.org/download/) and run it.
+- **macOS**. Download the official macOS installer from the [QGIS download page](https://qgis.org/download/) and run it.
 
 Start QGIS once to check that it opens. Then close it.
 
@@ -113,7 +113,7 @@ To set it, run the command below, or use the **Users** page of your desktop sett
 sudo chfn -f "Jane Doe" "$USER"
 ```
 
-**macOS** (expected to work, not yet tested). Check the current full name:
+**macOS**. Check the current full name:
 
 ```sh
 id -F
