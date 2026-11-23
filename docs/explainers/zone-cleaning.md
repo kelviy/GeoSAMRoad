@@ -2,7 +2,7 @@
 
 How `sentinel2data.cli package-zones` turns the frozen baseline into one zone package per zone, the folder an annotator opens in QGIS to clean that zone.
 
-> **Status, 2026-11-23.** This feature is in progress. The packager landed in commit `6a5f2b3` and KEL-9 is in review, with its manual QGIS check still open. KEL-47 added the flag key, the detector-run layer and the pending-output rule to the contract. The detectors, the review queue and the assembler from KEL-5 and KEL-11 do not exist yet. Nothing writes flags today. The usage manual is [docs/cleaning/zone-package.md](../cleaning/zone-package.md).
+> **Status, 2026-11-23.** This feature is in progress. The packager landed in commit `6a5f2b3` and KEL-9 is in review, with its manual QGIS check still open. KEL-47 added the flag key, the detector-run layer and the pending-output rule to the contract. KEL-48 added the `detect` command and its first detector, `stub`, described in [detectors.md](detectors.md). The other detectors, the review queue and the assembler from KEL-5 and KEL-11 do not exist yet. The usage manual is [docs/cleaning/zone-package.md](../cleaning/zone-package.md).
 
 ## Core idea
 
@@ -69,12 +69,12 @@ Cleaning happens per zone, not per tile. For each zone, the packager writes one 
 - **Pending detector output is not cleaning work.** [KEL-23](https://linear.app/kelvinwei/issue/KEL-23) asked why a `pending` flag used to refuse the zone, and found no reason. KEL-47 picked option A. Detector output is cheap to regenerate, so it should not need `--overwrite`. Reserving `--overwrite` for human work keeps the option meaningful. Decided flags are human work, so they still refuse the zone.
 - **The `.qgs` is hand-written XML, not built with PyQGIS.** Reason unknown, see [KEL-24](https://linear.app/kelvinwei/issue/KEL-24).
 - **Raw labels are rebuilt from the roads parquet, not read from the baseline dataset.** Reason unknown, see [KEL-25](https://linear.app/kelvinwei/issue/KEL-25).
-- **Flags carry only a location.** Overture and OSM are ODbL, and copying their geometry would make ROSA a derivative database. KEL-5 and [open directions](../cleaning/open-directions.md) record this. The packager only creates the empty layer, so this is a rule for the future detectors.
+- **Flags carry only a location.** Overture and OSM are ODbL, and copying their geometry would make ROSA a derivative database. KEL-5 and [open directions](../cleaning/open-directions.md) record this. The `stub` detector writes only a point. This matters most for the future second-source detectors.
 - **The reference imagery decides position, and 2020 Sentinel-2 decides a clear temporal mismatch.** See [ADR 0001](../adr/0001-aerial-authority-with-temporal-override.md). This is why the project ships both the NGI aerial layer and the hidden Sentinel-2 RGB, and why `temporal` is a defect value.
 
-## How detectors will fit in
+## How detectors fit in
 
-KEL-11 specifies the detectors and the review queue, and it is in the backlog. Each detector will read the zone GeoPackage and write rows into `flags`. A proposal will be a flag whose `proposal_fid` points at a `status = proposed` row in `labels`. The QGIS project already styles `proposed` as a dashed magenta line. Re-running the detectors must keep every flag that already has a decision. The detectors will match flags by `flag_key` and record each run's config in `detector_runs`. KEL-48 builds the `detect` runner. The written cleaning spec that annotators follow is KEL-7, also in the backlog.
+`detect` reads the zone GeoPackage and writes pending rows into `flags`, and records each run in `detector_runs`. [detectors.md](detectors.md) explains it. A zone whose only changes are `detect` output repackages without `--overwrite`, and a test checks this. A proposal will be a flag whose `proposal_fid` points at a `status = proposed` row in `labels`. The QGIS project already styles `proposed` as a dashed magenta line, but no detector writes proposals yet. `detect` refuses a zone packaged before KEL-47, so zones packaged earlier, such as `~/Documents/ROSAZones_v2`, need repackaging first. The written cleaning spec that annotators follow is KEL-7, in the backlog.
 
 ## Weak spots and ideas
 
@@ -98,7 +98,7 @@ KEL-11 specifies the detectors and the review queue, and it is in the backlog. E
 - `cleaning/packager.py`, `package_zone`: packages one zone, with the refusal check and the `.tmp` swap.
 - `cleaning/packager.py`, `raw_labels`: rebuilds the zone's raw labels and assigns `raw_id`.
 - `cleaning/packager.py`, `editable_labels`, `tile_grid`, `empty_flags` and `write_zone_gpkg`: build and write the five layers.
-- `cleaning/packager.py`, `zone_cleaning_work` and `_is_open_elsewhere`: decide whether a zone is safe to replace.
+- `cleaning/packager.py`, `zone_cleaning_work` and `is_open_elsewhere`: decide whether a zone is safe to replace.
 - `cleaning/packager.py`, `write_s2_rgb`: writes the zone's 8-bit Sentinel-2 RGB.
 - `cleaning/qgis_project.py`, `write_zone_project`: writes the `.qgs`. `_road_fields` and `_road_class_rule` hold the class and buffer rules.
 - `tests/sentinel2data/test_package_zones.py`: end-to-end tests on the synthetic zone, covering the contract, `raw_id` stability, refusal, the RGB and the project.

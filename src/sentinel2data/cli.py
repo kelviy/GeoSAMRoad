@@ -129,6 +129,58 @@ def package_zones(
 
 
 @app.command()
+def detect(
+    zones_dir: Annotated[
+        Path,
+        typer.Option(help="Directory `package-zones` wrote, one folder per zone"),
+    ],
+    zone: Annotated[
+        Optional[List[str]],
+        typer.Option(help="Zone filename stem to run on. Repeat for several; default all zones"),
+    ] = None,
+    detector_config: Annotated[
+        Optional[Path],
+        typer.Option(help="Detector thresholds and toggles (default src/sentinel2data/configs/detectors.yaml)"),
+    ] = None,
+):
+    """Run the detectors on zone packages and write their flags into each zone GeoPackage."""
+    from collections import Counter
+
+    from sentinel2data.cleaning.detect import ZoneSchemaOutdated, detect_zone, find_packaged_zones
+    from sentinel2data.cleaning.detectors import DEFAULT_CONFIG_PATH, DetectorConfig
+    from sentinel2data.cleaning.packager import ZoneIsOpen
+
+    try:
+        config = DetectorConfig.load(detector_config or DEFAULT_CONFIG_PATH)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--detector-config") from exc
+    zones = find_packaged_zones(zones_dir)
+    names = list(zone) if zone else list(zones)
+    unknown = [n for n in names if n not in zones]
+    if unknown:
+        raise typer.BadParameter(f"No zone GeoPackage under {zones_dir} for: {', '.join(unknown)}")
+
+    def counts(found):
+        return ", ".join(f"{t} {n}" for t, n in sorted(found.items())) or "no flags"
+
+    total, refused = Counter(), []
+    for name in names:
+        try:
+            zone_counts = detect_zone(zones[name], config)
+        except (ZoneIsOpen, ZoneSchemaOutdated) as exc:
+            refused.append(name)
+            typer.echo(f"Refused {name}: {exc}", err=True)
+            continue
+        total.update(zone_counts)
+        typer.echo(f"{name}: {counts(zone_counts)}")
+    typer.echo(f"All zones: {counts(total)}")
+
+    if refused:
+        typer.echo(f"{len(refused)} zone(s) not run (open elsewhere, or packaged before the flag contract): {', '.join(refused)}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command()
 def roads(
     out: Annotated[
         Path, 

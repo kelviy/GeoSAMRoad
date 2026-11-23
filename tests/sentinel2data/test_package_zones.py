@@ -424,7 +424,7 @@ def test_project_opens_in_qgis_with_every_layer_loading_from_the_moved_folder(qg
         if name != "NGI aerial":
             assert layer["source"].startswith(qgis_report["folder"]), (name, layer["source"])
     layers = qgis_report["layers"]
-    assert layers["Labels"]["feature_count"] == layers["Raw labels"]["feature_count"] == 12
+    assert layers["Labels"]["feature_count"] == layers["Raw labels"]["feature_count"] == 14
     assert layers["Tiles"]["feature_count"] == 9
     assert layers["Sentinel-2 RGB"]["band_count"] == 3
 

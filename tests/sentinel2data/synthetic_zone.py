@@ -16,6 +16,8 @@ pixel coordinates (col, row), with r/c the tile row and column:
     |  gap          |  near_dup     | road|
     |  dangling_stub|  unnoded_x    |     |
     |  zone_edge ^  |               |     |
+    |  split_dead_  |               |     |
+    |    end        |               |     |
     |  carriageways |               |     |
     +---------------+---------------+     |
     | r1_c0         | r1_c1         |     |
@@ -101,6 +103,10 @@ CASES = [
     CaseSpec(
         "dangling_stub", "r0_c0", "A 25 m Street stub hanging off an Other Road vertex",
         [("Other Road", [(10, 80), (60, 80), (110, 80)]), ("Street", [(60, 80), (60, 82.5)])],
+    ),
+    CaseSpec(
+        "split_dead_end", "r0_c0", "A 720 m dead-end Street stored as two rows, the last one 20 m long",
+        [("Street", [(10, 115), (80, 115)]), ("Street", [(80, 115), (82, 115)])],
     ),
     CaseSpec(
         "zone_edge", "r0_c0", "A Secondary Road running 200 m past the north zone edge",

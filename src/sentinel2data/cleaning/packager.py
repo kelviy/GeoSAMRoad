@@ -28,6 +28,7 @@ from sentinel2data.cleaning.contract import (
     FLAGS_LAYER,
     LABELS_LAYER,
     PENDING,
+    is_pending_detector_output,
     RAW_LABELS_LAYER,
     TILES_LAYER,
 )
@@ -235,7 +236,7 @@ def zone_cleaning_work(gpkg) -> list:
         work.append(f"{int((~pending).sum())} decided flag(s)")
     if not untouched.all():
         work.append(f"{int((~untouched).sum())} flag(s) an annotator saved")
-    detector_flags = pending & untouched
+    detector_flags = is_pending_detector_output(flags)
     pending_proposals = set(flags.loc[detector_flags, "proposal_fid"].dropna().astype(int))
     proposed = set(labels.index[(labels["status"] == "proposed") & labels["annotator"].isna()])
     labels = labels.drop(index=list(proposed & pending_proposals))
@@ -266,7 +267,7 @@ def _back_up(gpkg) -> Path:
     return backup
 
 
-def _is_open_elsewhere(gpkg) -> bool:
+def is_open_elsewhere(gpkg) -> bool:
     """Whether another program (e.g. QGIS) has the GeoPackage open.
 
     QGIS opens a GeoPackage in WAL mode and the ``-wal`` file goes when it
@@ -290,7 +291,7 @@ def package_zone(zone: ZoneInputs, *, roads_path, dataset_dir, output_dir, overw
     if folder.gpkg.exists():
         # Check before reading: GDAL removes the WAL files on close, even when
         # another program still uses them.
-        if _is_open_elsewhere(folder.gpkg):
+        if is_open_elsewhere(folder.gpkg):
             raise ZoneIsOpen(folder.gpkg)
         work = zone_cleaning_work(folder.gpkg)
         if work and not overwrite:

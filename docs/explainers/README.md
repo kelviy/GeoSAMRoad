@@ -14,6 +14,7 @@ Explainers cover how a feature works and why. They are not usage manuals, API re
 | [dataset-tiling.md](dataset-tiling.md) | How `generate` turns zone imagery and road vectors into ROSA tiles |
 | [dataset-stats.md](dataset-stats.md) | How `norm-stats` and `summary` describe a dataset, and how the models normalise their input bands |
 | [zone-cleaning.md](zone-cleaning.md) | How `package-zones` turns the frozen baseline into a zone package for cleaning in QGIS |
+| [detectors.md](detectors.md) | How `detect` runs model-agnostic detectors over zone packages and writes their flags |
 | [training-data.md](training-data.md) | How `SAMROAD_Dataset` turns ROSA tiles into cropped, upsampled, augmented samples with road, keypoint and graph labels |
 | [models.md](models.md) | How `GeoSAMRoad` segments road and keypoint masks, scores links with TopoNet, and what the sam, terramind, unet and sgcn variants swap |
 | [training.md](training.md) | How `geosamroad.train` runs a training job and picks the best checkpoint, and how test, triage, sweeps and the HPC job fit around it |

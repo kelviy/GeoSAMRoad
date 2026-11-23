@@ -1,0 +1,16 @@
+# Detector thresholds and toggles for the `detect` command.
+# Each run records this whole config in the zone GeoPackage's detector_runs layer.
+# Values are provisional (KEL-11) and are tuned during cleaning.
+# Usage:
+#   python -m sentinel2data.cli detect --zones-dir <package-zones output> --detector-config <this file>
+
+# A road end within this distance of another road is connected to it.
+connect_tolerance_m: 0.5
+# A road end within this distance of the zone boundary was cut by the zone
+# edge, not a real dead end.
+zone_edge_tolerance_m: 1.0
+
+# Dangling stub: a road with a dead end, shorter than max_length_m.
+stub:
+  enabled: true
+  max_length_m: 30.0

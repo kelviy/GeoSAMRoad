@@ -10,6 +10,8 @@ DETECTOR_RUNS_LAYER = "detector_runs"
 
 # labels
 LABEL_STATUSES = ("kept", "modified", "added", "deleted", "proposed")
+# Label statuses that are roads now; ``deleted`` and ``proposed`` rows are not.
+ROAD_STATUSES = ("kept", "modified", "added")
 DEFECTS = ("gap", "stub", "misalignment", "phantom", "missing", "temporal")
 
 # flags: point or polygon locations (the QGIS project shows Point and Polygon
@@ -17,6 +19,14 @@ DEFECTS = ("gap", "stub", "misalignment", "phantom", "missing", "temporal")
 FLAG_TYPES = ("gap", "stub", "duplicate", "crossing", "missing?", "phantom?")
 PENDING = "pending"
 FLAG_DECISIONS = (PENDING, "real", "not_defect", "needs_qgis")
+
+
+
+def is_pending_detector_output(flags):
+    """Per flag row, whether it is pending detector output: ``pending`` and not
+    saved by anyone. QGIS stamps ``annotator`` whenever someone saves a row."""
+    return flags["decision"].eq(PENDING).fillna(False).astype(bool) & flags["annotator"].isna()
+
 
 # Field -> pandas dtype, in layer order.
 FLAG_FIELDS = {

@@ -71,6 +71,10 @@ _Avoid_: Issue, warning, annotation
 A flag's identity across detector runs: the same suspected defect gets the same key every run, so a re-run can find the flag it placed before.
 _Avoid_: Flag id, fid
 
+**Edge-cut end**:
+A road end on the zone boundary, where packaging clipped the road. It is not a dead end, and the road's real length past it is unknown, so detectors ignore it.
+_Avoid_: Boundary end, clipped end
+
 **Detector run**:
 One run of the detectors over a zone, recorded in the zone GeoPackage with its time and full config.
 _Avoid_: Job, pass
