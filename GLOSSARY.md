@@ -103,6 +103,10 @@ _Avoid_: Job, pass
 A flag that also carries a suggested label revision (e.g. a connector line closing a gap), which an annotator accepts or rejects.
 _Avoid_: Suggestion, auto-fix
 
+**Connector**:
+The line a gap proposal suggests, from a dangling road end to the nearest other road. Accepting it makes it an added road and gives the other road a vertex where it ends.
+_Avoid_: Link, bridge
+
 **Second source**:
 An independent road layer (e.g. Overture, OpenStreetMap) used to point annotators at suspected defects. Its geometry is not copied into labels.
 _Avoid_: Reference layer, alternative labels

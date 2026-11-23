@@ -11,6 +11,8 @@ FLAGS_LAYER = "flags"
 DETECTOR_RUNS_LAYER = "detector_runs"
 # Tables the review core creates on its first write (see ``review``).
 FLAG_DELETIONS_LAYER = "flag_deletions"
+PROPOSAL_ROWS_LAYER = "proposal_rows"
+CONNECTOR_VERTICES_LAYER = "connector_vertices"
 REVIEW_POSITION_LAYER = "review_position"
 # The one layer of <zone>_overture.gpkg, a separate file from the zone GeoPackage.
 OVERTURE_LAYER = "overture_roads"

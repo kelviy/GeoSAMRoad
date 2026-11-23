@@ -18,7 +18,7 @@ Each `<zone>/` folder holds:
 
 | File | What it is |
 | --- | --- |
-| `<zone>.gpkg` | The zone GeoPackage: `raw_labels`, `labels`, `tiles`, `flags`, `detector_runs`, and `flag_deletions` and `review_position` once the review core first writes |
+| `<zone>.gpkg` | The zone GeoPackage: `raw_labels`, `labels`, `tiles`, `flags`, `detector_runs`, and `flag_deletions`, `review_position`, `proposal_rows` and `connector_vertices` once the review core first writes |
 | `<zone>.qgs` | The QGIS project. Open this. |
 | `<zone>_s2_rgbnir.tif` | The zone's Sentinel-2 red, green, blue and NIR bands, each enhanced (gamma + CLAHE) |
 | `<zone>_overture.gpkg` | The Overture roads clipped to the zone, with `road_class`. Only with `--overture`. |

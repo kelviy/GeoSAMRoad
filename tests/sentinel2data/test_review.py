@@ -59,7 +59,7 @@ def tile_of(tiles, point):
     return min(zip(hits["row"], hits["col"]))
 
 
-def test_the_queue_lists_every_flag_then_every_kept_tile_in_spatial_order(zone):
+def test_the_queue_lists_flags_then_kept_tiles_each_in_spatial_order(zone):
     queue = review.build_queue(zone)
 
     flags, tiles = read(zone, "flags"), read(zone, "tiles")
@@ -70,14 +70,17 @@ def test_the_queue_lists_every_flag_then_every_kept_tile_in_spatial_order(zone):
     assert sorted(i.fid for i in flag_items) == sorted(flags.index)
     assert [i.fid for i in queue[len(flags) :]] == kept.index.tolist()
 
-    # Flags sweep the kept tiles in row then column order, north to south and
-    # west to east inside each tile.
+    # Proposals come first. Each group sweeps the kept tiles in row then column
+    # order, north to south and west to east inside each tile.
     points = shapely.point_on_surface(
         flags.geometry.loc[[i.fid for i in flag_items]].to_numpy()
     )
-    order = [(*tile_of(tiles, p), -shapely.get_y(p), shapely.get_x(p)) for p in points]
+    order = [
+        (i.kind != "proposal", *tile_of(tiles, p), -shapely.get_y(p), shapely.get_x(p))
+        for i, p in zip(flag_items, points)
+    ]
     assert order == sorted(order)
-    assert {o[:2] for o in order} == {(0, 0), (0, 1)}
+    assert {o[1:3] for o in order} == {(0, 0), (0, 1)}
     assert review.build_queue(zone) == queue
 
 

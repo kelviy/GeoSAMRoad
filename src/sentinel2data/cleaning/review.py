@@ -15,6 +15,7 @@ import pandas as pd
 import pyogrio
 import shapely
 
+from sentinel2data.cleaning import gpkg_geometry, proposals
 from sentinel2data.cleaning.contract import (
     DETECTOR_RUNS_LAYER,
     FLAG_DECISIONS,
@@ -157,8 +158,8 @@ class Progress:
 
 
 def build_queue(gpkg, queue_filter: QueueFilter | None = None) -> list[QueueItem]:
-    """Every flag, then every kept tile, each in spatial order, keeping only
-    the items ``queue_filter`` keeps.
+    """Every proposal, then every other flag, then every kept tile, each in
+    spatial order, keeping only the items ``queue_filter`` keeps.
 
     Tiles go in row then column order, north-west first. A flag goes with the
     tile nearest its representative point (the first such tile in that order
@@ -207,6 +208,7 @@ def _all_items(gpkg) -> list[QueueItem]:
             shapely.get_x(points),
             -shapely.get_y(points),
             tile_pos,
+            flags["proposal_fid"].isna().to_numpy(),  # proposals first
         )
     )
     flag_items = [
@@ -320,7 +322,10 @@ def decide_flag(gpkg, fid: int, decision: str, *, annotator: str) -> tuple[int, 
 
     ``real`` on a flag type in ``DELETING_FLAG_TYPES`` also sets label rows
     to ``status = deleted``, with that type's defect and the annotator. Rows
-    are never removed. Any other decision changes no label.
+    are never removed.
+
+    On a proposal, ``real`` accepts it and ``not_defect`` rejects it (see
+    ``proposals``). Any other decision changes no label.
 
     * ``stub``: every road row the flag's ``raw_ids`` name. They make up the
       short branch.
@@ -363,6 +368,12 @@ def decide_flag(gpkg, fid: int, decision: str, *, annotator: str) -> tuple[int, 
         deleted = [
             row for row in deleted if _delete_row(con, fid, row, defect, annotator)
         ]
+        if pd.notna(flag["proposal_fid"]):
+            proposals.undo(con, fid, _or_none(flag["annotator"]))
+            if decision == "real":
+                proposals.accept(con, fid, int(flag["proposal_fid"]), annotator)
+            elif decision == "not_defect":
+                proposals.reject(con, fid, int(flag["proposal_fid"]))
     return tuple(deleted)
 
 
@@ -402,7 +413,7 @@ def _undo_deletions(con, flag_fid, defect, deleted_by):
         f'FROM "{FLAG_DELETIONS_LAYER}" AS l JOIN "{LABELS_LAYER}" AS r '
         "ON r.fid = l.label_fid WHERE l.flag_fid = ? AND r.status = 'deleted' "
         "AND r.defect IS ? AND r.annotator IS ?",
-        (flag_fid, defect, None if pd.isna(deleted_by) else deleted_by),
+        (flag_fid, defect, _or_none(deleted_by)),
     ).fetchall()
     others = _other_real_flags(con, flag_fid)
     for log_fid, row, status, was_defect, was_annotator, raw_id in logged:
@@ -457,7 +468,7 @@ def _ensure_review_tables(con):
         # At most one row: the layer and fid of the item the annotator moved to.
         REVIEW_POSITION_LAYER: "layer TEXT NOT NULL, item_fid INTEGER NOT NULL",
     }
-    for name, columns in tables.items():
+    for name, columns in (tables | proposals.TABLES).items():
         con.execute(
             f'CREATE TABLE IF NOT EXISTS "{name}" '
             f"(fid INTEGER PRIMARY KEY AUTOINCREMENT, {columns})"
@@ -531,24 +542,17 @@ def _checked_annotator(annotator) -> str:
     return annotator.strip()
 
 
-# GDAL's R-tree triggers call these. An UPDATE compiles every trigger on its
-# table, so they must exist, but the review core never changes a geometry or
-# a fid, so no trigger that calls them fires.
-_GDAL_TRIGGER_FUNCTIONS = ("ST_IsEmpty", "ST_MinX", "ST_MaxX", "ST_MinY", "ST_MaxY")
-
-
-def _never_called(*_):
-    raise RuntimeError("the review core must not change a geometry or a fid")
-
-
 @contextmanager
 def _writing(gpkg):
     """A plain SQLite connection to ``gpkg`` in one transaction, committed on
     success and rolled back on error."""
     with closing(sqlite3.connect(gpkg)) as con, con:
-        for name in _GDAL_TRIGGER_FUNCTIONS:
-            con.create_function(name, 1, _never_called)
+        gpkg_geometry.register_rtree_functions(con)
         yield con
+
+
+def _or_none(value):
+    return None if pd.isna(value) else value
 
 
 def _decision(value) -> str:
