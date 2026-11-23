@@ -95,7 +95,7 @@ docs = [
 
 [tool.uv.sources]
 instageo = { git = "https://github.com/kelviy/InstaGeo-E2E-Geospatial-ML.git" }
-terratorch = { git = "https://github.com/terrastackai/terratorch.git" }
+terratorch = { git = "https://github.com/terrastackai/terratorch.git", rev = "d622902f3e37329085397c7ed5b8c529ba9397c3" }
 segment-anything = { git = "https://github.com/facebookresearch/segment-anything.git" }
 
 torch = [ { index = "pytorch-cu128", marker = "sys_platform == 'linux'" } ]
@@ -137,6 +137,8 @@ dev = [
     "mkdocs-literate-nav>=0.6.3",
     "mkdocstrings[python]>=1.0.4",
     "typer>=0.24.1",
+    "ruff>=0.17.6",
+    "pyright>=1.1.414",
 ]
 
 [tool.hatch.build.targets.wheel]

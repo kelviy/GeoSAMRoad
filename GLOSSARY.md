@@ -33,6 +33,18 @@ _Avoid_: Fixed label, ground truth
 One attributable change from a raw label towards a cleaned label. It records who made it, when, and which defect it corrects.
 _Avoid_: Edit, fix, correction
 
+**Baseline**:
+The dataset generated once from the source road layer, with the excluded classes removed, and frozen. Every raw versus cleaned comparison is made against it.
+_Avoid_: Original dataset, v1
+
+**Road class**:
+The source layer's own category for a road, such as Main Road or Street. It sets how wide the road is drawn in the road mask.
+_Avoid_: Road type, category
+
+**Buffer**:
+The half-width, in metres, that a road line is widened by before it becomes road pixels. It depends on the road class.
+_Avoid_: Road width, thickness
+
 ## Cleaning
 
 **Defect**:
@@ -70,3 +82,77 @@ _Avoid_: Triage, worklist
 **Cleaning spec**:
 The written rules annotators follow when deciding what counts as a defect and how to correct it. It is also the methodology reported in the paper.
 _Avoid_: Guidelines, rules, SOP
+
+**Zone package**:
+The folder an annotator opens to clean one zone: the zone's GeoPackage, its QGIS project and its Sentinel-2 RGB.
+_Avoid_: Zone bundle, workspace
+
+**Cleaning work**:
+Any change an annotator or detector has made to a zone package since it was packaged. Cleaning work is never overwritten by accident.
+_Avoid_: Edits, progress
+
+## Imagery
+
+**Composite**:
+One image made by combining many satellite scenes over a date window, pixel by pixel, to remove clouds and gaps.
+_Avoid_: Mosaic, scene
+
+**Band layout**:
+The fixed order and names of the bands in a tile. Models find each band by its name in the layout.
+_Avoid_: Band order, channels
+
+**Enhanced RGB**:
+The red, green and blue bands contrast-stretched for viewing and for RGB-only models, stored in every tile beside the raw bands.
+_Avoid_: True colour, visual bands
+
+## Road graphs
+
+**Road mask**:
+A per-pixel image of where roads are, either burned from road labels or predicted by a model as a probability.
+_Avoid_: Segmentation, label image
+
+**Keypoint**:
+A point on the road network where a road ends or meets other roads.
+_Avoid_: Junction, node, intersection
+
+**Road graph**:
+The roads of a tile as points joined by straight edges, the form in which connectivity is measured.
+_Avoid_: Network, topology, vector
+
+**Label graph**:
+The road graph built from a tile's labels, which a predicted graph is scored against.
+_Avoid_: Ground truth graph, GT graph
+
+**Predicted graph**:
+The road graph a model produces for one tile.
+_Avoid_: Output graph, proposal
+
+**Road density**:
+The fraction of a tile's pixels that are road in its labels.
+_Avoid_: Coverage, road ratio
+
+## Models and evaluation
+
+**Crop**:
+A square window cut from a tile, the unit a model sees in one sample.
+_Avoid_: Patch, tile
+
+**Variant**:
+One road model, defined by its backbone and input bands, such as SAM with RGB or TerraMind with multispectral input.
+_Avoid_: Model type, flavour
+
+**Final run**:
+A training run on the train and val splits together, producing the model whose test scores are reported.
+_Avoid_: Production run, full run
+
+**TOPO**:
+A road graph metric that matches points sampled along nearby roads in the predicted and label graphs, giving precision and recall of local connectivity.
+
+**APLS**:
+A road graph metric that compares shortest-path lengths between matched point pairs in the predicted and label graphs, scoring route connectivity.
+
+## Web app
+
+**Cell**:
+One square of the web app's global selection grid, the area of one image fetched on demand. A cell is not a tile.
+_Avoid_: Tile, square
