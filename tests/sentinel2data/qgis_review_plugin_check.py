@@ -14,9 +14,18 @@ import json
 import sqlite3
 import sys
 
-from qgis.core import QgsApplication, QgsPointXY, QgsProject, QgsVectorLayer
+from qgis.core import (
+    QgsApplication,
+    QgsFeature,
+    QgsGeometry,
+    QgsMapRendererParallelJob,
+    QgsMapSettings,
+    QgsPointXY,
+    QgsProject,
+    QgsVectorLayer,
+)
 from qgis.gui import QgsMapCanvas
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import QSize, Qt
 from qgis.PyQt.QtTest import QTest
 from qgis.PyQt.QtWidgets import QAction, QMainWindow
 
@@ -25,7 +34,7 @@ sys.path.insert(0, plugins_dir)
 
 from rosa_review_queue.client import ReviewClient
 from rosa_review_queue.panel import ReviewPanel
-from rosa_review_queue.zone import LABELS, Zone
+from rosa_review_queue.zone import FLAG_AREAS, LABELS, S2_RGB, TILES, Zone
 
 app = QgsApplication([], True)
 app.initQgis()
@@ -113,6 +122,42 @@ with ReviewClient(service_python) as client:
     s2 = project.layerTreeRoot().findLayer("rosa_zone_s2_rgb")
     report["s2_visible"] = s2.isVisible() if s2 else None
 
+
+def inside_pixel(extent, *layers):
+    """The colour inside the middle of ``extent``, drawn from ``layers`` over
+    the Sentinel-2 RGB, as an annotator sees it."""
+    settings = QgsMapSettings()
+    settings.setLayers([*layers, project.mapLayer(S2_RGB)])
+    settings.setDestinationCrs(project.crs())
+    settings.setSelectionColor(project.selectionColor())
+    settings.setExtent(extent)
+    settings.setOutputSize(QSize(100, 100))
+    job = QgsMapRendererParallelJob(settings)
+    job.start()
+    job.waitForFinished()
+    return job.renderedImage().pixelColor(50, 75).getRgb()  # below the label
+
+
+# A selected area flag must not hide what lies inside it. QGIS fills a
+# selected polygon with the project's selection colour, opaque white here.
+areas = project.mapLayer(FLAG_AREAS)
+tile = next(project.mapLayer(TILES).getFeatures())
+area = QgsFeature(areas.fields())
+area.setGeometry(QgsGeometry.fromRect(tile.geometry().boundingBox().buffered(-100)))
+area["type"], area["decision"] = "phantom?", "pending"
+areas.dataProvider().addFeatures([area])
+fid = max(f.id() for f in areas.getFeatures())
+view = tile.geometry().boundingBox()
+imagery = inside_pixel(view)
+areas.selectByIds([fid])
+default_selected = inside_pixel(view, areas)
+Zone.of(project).outline_selection()
+report["area_selection"] = {
+    "default_hides_inside": default_selected != imagery,
+    "outlined_shows_inside": inside_pixel(view, areas) == imagery,
+}
+
+
 # The panel docked in a main window that binds the panel's keys window-wide,
 # as QGIS binds S, T and R.
 window = QMainWindow()
@@ -143,5 +188,6 @@ with ReviewClient(service_python) as client:
     panel.note.setFocus()
     QTest.keyClicks(panel.note, "SRTB")
     report["panel_keys"]["note"] = panel.note.text()
+
 
 print(json.dumps(report))

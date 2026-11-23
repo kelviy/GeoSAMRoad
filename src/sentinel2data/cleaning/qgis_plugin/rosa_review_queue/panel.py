@@ -155,6 +155,7 @@ class ReviewPanel(QDockWidget):
         )
         self._say("")
         if zone is not None:
+            zone.outline_selection()
             self.refresh()
         else:
             self._render()

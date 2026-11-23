@@ -172,3 +172,10 @@ def test_the_panel_keys_win_over_qgis_window_shortcuts_but_not_in_the_note(
         "window_actions_fired": [],
         "note": "SRTB",
     }
+
+
+def test_a_selected_area_flag_is_outlined_not_filled(qgis_check):
+    assert qgis_check["area_selection"] == {
+        "default_hides_inside": True,
+        "outlined_shows_inside": True,
+    }

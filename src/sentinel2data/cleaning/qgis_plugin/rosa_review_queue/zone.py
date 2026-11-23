@@ -2,9 +2,11 @@
 and what the panel does to them around each review core call."""
 
 from qgis.core import (
+    Qgis,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
     QgsFeatureRequest,
+    QgsFillSymbol,
     QgsProject,
     QgsRectangle,
     QgsVectorLayer,
@@ -21,6 +23,12 @@ AERIAL = "rosa_zone_ngi_aerial"
 
 # The two views of the flags table, one per geometry type.
 FLAG_LAYERS = (FLAG_POINTS, FLAG_AREAS)
+
+# Area layers whose selected feature is drawn as an outline. QGIS fills a
+# selected polygon with the project's selection colour, which zone projects
+# leave at opaque white, so the selected flag or tile would hide its imagery.
+OUTLINED_SELECTION = (FLAG_AREAS, TILES)
+SELECTION_OUTLINE = {"outline_color": "255,255,0,255", "outline_width": "0.8"}
 
 # Shown on every item: the reference imagery, the raw labels under the
 # labels, and the flags, proposals included.
@@ -84,6 +92,22 @@ class Zone:
         for layer in self.vector_layers():
             layer.reload()
             layer.triggerRepaint()
+
+    def outline_selection(self):
+        """Draw a selected area flag or tile as a yellow outline with no fill,
+        so the panel's selection of the current item leaves its inside visible."""
+        for layer_id in OUTLINED_SELECTION:
+            layer = self.project.mapLayer(layer_id)
+            if isinstance(layer, QgsVectorLayer):
+                symbol = QgsFillSymbol.createSimple(
+                    {"style": "no", **SELECTION_OUTLINE}
+                )
+                selection = layer.selectionProperties()
+                selection.setSelectionSymbol(symbol)
+                selection.setSelectionRenderingMode(
+                    Qgis.SelectionRenderingMode.CustomSymbol
+                )
+                layer.triggerRepaint()
 
     def show(self, canvas, item: dict | None, show_s2: bool):
         """Zoom ``canvas`` to the item's extent, select its feature, and turn
