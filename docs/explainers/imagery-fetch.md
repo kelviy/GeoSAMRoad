@@ -38,9 +38,9 @@ Collect every Sentinel-2 scene over the area in a date window, mask the clouds a
 
 - **The 21-band layout with zero fill.** Commit 3695d4e for KEL-8 states that "the GEE port writes the same 21-band layout" as the generator. Band indices stay the same, so every encoder reads the same physical bands at training and at inference. No band list reads bands 13 to 18, so the port does not fetch them.
 - **Only the bands the model reads.** The port fetches only the source bands of the chosen band list. `tests/globalurbanmapper_gee/test_bands.py` checks this.
-- **The composite recipe.** The median for Sentinel-2, the per-pass mean for Sentinel-1, IW before EW and the 90% scene filter are ported from GlobalUrbanMapper. No record says how closely they follow the JavaScript, or why those values were chosen. Reason unknown, see [KEL-26](https://linear.app/kelvinwei/issue/KEL-26).
-- **NaN written as 0.** Reason unknown, see [KEL-27](https://linear.app/kelvinwei/issue/KEL-27).
-- **Zone imagery comes from somewhere else.** The 60 zone COGs that `generate` reads have 20 bands, including elevation, slope, aspect and the urban layers. Their band names follow the GlobalUrbanMapper layout, for example `B4` and `gisa_urban_30m`. `generator/processor.py` `zone_band_names` rejects any zone that does not have exactly 20 bands. The port writes 21 bands and cannot fetch elevation or urban layers, so it did not make the zone imagery. Which script made the zone COGs, and with which dates and settings, is not recorded. Reason unknown, see [KEL-28](https://linear.app/kelvinwei/issue/KEL-28).
+- **The composite recipe.** The median for Sentinel-2, the per-pass mean for Sentinel-1, IW before EW and the 90% scene filter are ported from GlobalUrbanMapper. No record says how closely they follow the JavaScript, or why those values were chosen. Reason unknown, see KEL-26.
+- **NaN written as 0.** Reason unknown, see KEL-27.
+- **Zone imagery comes from somewhere else.** The 60 zone COGs that `generate` reads have 20 bands, including elevation, slope, aspect and the urban layers. Their band names follow the GlobalUrbanMapper layout, for example `B4` and `gisa_urban_30m`. `generator/processor.py` `zone_band_names` rejects any zone that does not have exactly 20 bands. The port writes 21 bands and cannot fetch elevation or urban layers, so it did not make the zone imagery. Which script made the zone COGs, and with which dates and settings, is not recorded. Reason unknown, see KEL-28.
 
 ## Weak spots and ideas
 

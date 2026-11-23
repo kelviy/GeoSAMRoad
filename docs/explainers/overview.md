@@ -24,7 +24,7 @@ zone imagery (60 COGs, pre-split) --------------+                 |            |
 ```
 
 1. **Road lines.** The `roads` command maps one road source into a single road parquet with a road class and a buffer per line. The production baseline uses CDNGI. See [road vectors](road-vectors.md).
-2. **Zone imagery.** Each zone is one 10 m image in UTM with 20 bands, already sorted into `train/`, `val/` and `test/` folders. Where these images were made is not recorded, see [KEL-28](https://linear.app/kelvinwei/issue/KEL-28).
+2. **Zone imagery.** Each zone is one 10 m image in UTM with 20 bands, already sorted into `train/`, `val/` and `test/` folders. Where these images were made is not recorded, see KEL-28.
 3. **Tiling.** `generate` burns the roads into a mask, cuts a fixed 512 px grid, keeps tiles with roads and no missing pixels, and writes five artifacts per tile plus the metadata and split CSVs. The first run, frozen, is the baseline. See [dataset tiling](dataset-tiling.md). `norm-stats` and `summary` describe the result, see [dataset stats](dataset-stats.md).
 4. **Cleaning.** `package-zones` turns the baseline into one zone package per zone for annotators to correct in QGIS against aerial imagery. Merging cleaned zones back into a road layer and running `generate` again is planned, not built. See [zone cleaning](zone-cleaning.md).
 5. **Training data.** The dataset reads 128 px crops of a tile, upsamples them to 256 px and derives road, keypoint and graph labels. See [training data](training-data.md).
@@ -47,12 +47,12 @@ The CRESI mask post-processing in `mask_postprocessing/` is a second way to turn
 
 - **Reference imagery decides road position during cleaning**, and 2020 Sentinel-2 decides existence when the two clearly disagree. See ADR 0001.
 - **Second sources such as Overture are flags only**, never copied into labels, because of ODbL licensing. See `docs/cleaning/open-directions.md`.
-- Most other design choices have no recorded reason yet. Each one is a sub-issue of [KEL-12](https://linear.app/kelvinwei/issue/KEL-12), linked from the explainer it belongs to.
+- Most other design choices have no recorded reason yet. Each one is a sub-issue of KEL-12, linked from the explainer it belongs to.
 
 ## Weak spots and ideas
 
-- **The inference thresholds may be tuned on test.** Their values match the 256-bin search that `test.py` prints on the test split. See [KEL-36](https://linear.app/kelvinwei/issue/KEL-36).
-- **The UNet and SGCN normalisation stats are a hand copy.** They are hard-coded in `normalization.py` (last re-checked against the raw-labels baseline v2 in KEL-10), and nothing reads the stats `norm-stats` writes. See [KEL-21](https://linear.app/kelvinwei/issue/KEL-21).
+- **The inference thresholds may be tuned on test.** Their values match the 256-bin search that `test.py` prints on the test split. See KEL-36.
+- **The UNet and SGCN normalisation stats are a hand copy.** They are hard-coded in `normalization.py` (last re-checked against the raw-labels baseline v2 in KEL-10), and nothing reads the stats `norm-stats` writes. See KEL-21.
 - **Package dependencies run in a chain.** `sentinel2data` imports `geosamroad.dataset`, `globalurbanmapper_gee` imports `sentinel2data.generator.helper`, and the web app imports all three. The dataset builder cannot be installed or tested without the training package.
 - **Much of the vendored code is dead.** Our code imports only `BilinearSampler`, `graph_utils` and `extract_graph_points` from `sam_road/`. Its `train.py`, `test.py`, `triage.py`, `inferencer.py`, `dataset.py`, `config/` and both metric copies are never imported. `mask_postprocessing/` has no caller, and `RasterRoadDataModule` is unused.
 - **The README is stale.** It points at `configs/local/sam.yaml`, which does not exist. Only `configs/hpc/` exists.
@@ -64,4 +64,4 @@ The CRESI mask post-processing in `mask_postprocessing/` is a second way to turn
 - `src/geosamroad/`: the road models. `dataset/`, `models/`, `train.py`, `test.py`, `inferencer.py`, `eval_graphs.py`, `triage.py`, `configs/` and the vendored `sam_road/`, `metrics/` and `mask_postprocessing/`.
 - `src/globalurbanmapper_gee/`: the Earth Engine composite and download port, used by the web app.
 - `src/geosamroad_app/` and `deploy/`: the web app and its container.
-- `docs/adr/`, `docs/cleaning/`, `GLOSSARY.md`: decisions, the cleaning manual and the shared vocabulary.
+- `docs/adr/`, `docs/guides/`, `GLOSSARY.md`: decisions, the usage guides and the shared vocabulary.

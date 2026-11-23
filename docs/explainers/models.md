@@ -56,11 +56,11 @@ It never reaches the SAM encoder. `resolve_input` returns three RGB bands for `s
 
 ## Why it's like this
 
-- **Bicubic upsampling.** The README abstract says the upsampling addresses the lower resolution of Sentinel-2. The choice of a 128 px crop and a factor of 2 has no recorded reason. Reason unknown, see [KEL-30](https://linear.app/kelvinwei/issue/KEL-30).
+- **Bicubic upsampling.** The README abstract says the upsampling addresses the lower resolution of Sentinel-2. The choice of a 128 px crop and a factor of 2 has no recorded reason. Reason unknown, see KEL-30.
 - **Backbone and CNN swaps.** The abstract says these changes address the extra bands of Sentinel-2. It reports 49.79 APLS, which is 2.69 APLS over the SAM-Road baseline, by using extra bands.
-- **SAM stays RGB only.** No code adapts SAM's patch embedding to more bands. SAM is the baseline in the abstract. Why the extra bands were not fed to SAM itself is not recorded. Reason unknown, see [KEL-31](https://linear.app/kelvinwei/issue/KEL-31).
-- **terratorch wrapping.** The transformer variants go through terratorch's factory, which adds a neck and a head around the SAM-Road decoder. Reason unknown, see [KEL-32](https://linear.app/kelvinwei/issue/KEL-32).
-- **BCE plus Dice.** Every config uses `bce_dice` with equal weights, where upstream used BCE or focal loss. Reason unknown, see [KEL-33](https://linear.app/kelvinwei/issue/KEL-33).
+- **SAM stays RGB only.** No code adapts SAM's patch embedding to more bands. SAM is the baseline in the abstract. Why the extra bands were not fed to SAM itself is not recorded. Reason unknown, see KEL-31.
+- **terratorch wrapping.** The transformer variants go through terratorch's factory, which adds a neck and a head around the SAM-Road decoder. Reason unknown, see KEL-32.
+- **BCE plus Dice.** Every config uses `bce_dice` with equal weights, where upstream used BCE or focal loss. Reason unknown, see KEL-33.
 
 ## Weak spots and ideas
 

@@ -33,10 +33,10 @@ Each test tile has two road graphs. One is the label graph that tiling wrote fro
 
 ## Why it's like this
 
-- **TOPO and APLS.** Both metrics come from the SAM-Road and Sat2Graph code, and `README.md` lists both projects under acknowledgements. No document records why ROSA uses these two metrics and no others. Reason unknown, see [KEL-41](https://linear.app/kelvinwei/issue/KEL-41).
-- **A metric scale of 4.** The code comment says scale 4 makes one unit 2.5 m. The APLS README says its constants are set for 2048 by 2048 tiles. The written reason for choosing 4 is missing. Reason unknown, see [KEL-42](https://linear.app/kelvinwei/issue/KEL-42).
-- **TOPO radii of 30 m, 15 m and 400 m.** They appear in `parse_args` with no comment. Reason unknown, see [KEL-43](https://linear.app/kelvinwei/issue/KEL-43).
-- **Scoring TOPO recall without coverage as its own column.** The code keeps both forms of recall and gives no reason. Reason unknown, see [KEL-44](https://linear.app/kelvinwei/issue/KEL-44).
+- **TOPO and APLS.** Both metrics come from the SAM-Road and Sat2Graph code, and `README.md` lists both projects under acknowledgements. No document records why ROSA uses these two metrics and no others. Reason unknown, see KEL-41.
+- **A metric scale of 4.** The code comment says scale 4 makes one unit 2.5 m. The APLS README says its constants are set for 2048 by 2048 tiles. The written reason for choosing 4 is missing. Reason unknown, see KEL-42.
+- **TOPO radii of 30 m, 15 m and 400 m.** They appear in `parse_args` with no comment. Reason unknown, see KEL-43.
+- **Scoring TOPO recall without coverage as its own column.** The code keeps both forms of recall and gives no reason. Reason unknown, see KEL-44.
 - **Go binary built per run.** Commit `a204fa1` deleted three prebuilt `apls_bin` files from `metrics/apls/save/`. Its message says "Clean up APLS". The script now builds into the output folder.
 
 ## Weak spots and ideas

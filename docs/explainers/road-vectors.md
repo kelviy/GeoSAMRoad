@@ -49,9 +49,9 @@ The buffer is a half-width. A comment in the config notes that 5 m gives a road 
 - **Track and Slipway are ignored.** They are not roads under the ROSA definition in `GLOSSARY.md`. The config comment says Track is faint vehicle tracks and Slipway is boat ramps. Commit 3695d4e, for KEL-8, moved them into `ignored`. Before that they were `small` with a 3 m buffer. `generate` drops them a second time, because road parquets built before that commit still hold them.
 - **Per-class buffers.** Mask width follows road size. The config comment notes that 5 m gives a road one pixel wide at 10 m. The Overture link buffers carry the comment "not certain about the buffers".
 - **GeoPackage output.** The KEL-5 spec makes GeoPackage the editing format and GeoParquet the pipeline format.
-- **One source per run.** The command reads one source and writes one file. Reason unknown, see [KEL-17](https://linear.app/kelvinwei/issue/KEL-17).
-- **FRST gets a 10 m buffer.** The code comment says FRST has no buffer values, so the code uses a constant. Why 10 m, twice the CDNGI Other Road width, is not recorded. Reason unknown, see [KEL-18](https://linear.app/kelvinwei/issue/KEL-18).
-- **Overture keeps `track`.** It is `small` with a 3 m buffer, while CDNGI Track is ignored. Reason unknown, see [KEL-19](https://linear.app/kelvinwei/issue/KEL-19).
+- **One source per run.** The command reads one source and writes one file. Reason unknown, see KEL-17.
+- **FRST gets a 10 m buffer.** The code comment says FRST has no buffer values, so the code uses a constant. Why 10 m, twice the CDNGI Other Road width, is not recorded. Reason unknown, see KEL-18.
+- **Overture keeps `track`.** It is `small` with a 3 m buffer, while CDNGI Track is ignored. Reason unknown, see KEL-19.
 
 ## Weak spots and ideas
 

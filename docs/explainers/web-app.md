@@ -49,8 +49,8 @@ The map shows a fixed grid of square cells, each one exactly the area of one 512
 - **Cache-busting.** The `asset_version` docstring says caches such as Cloudflare's edge served an old `app.js` with a new `index.html`. The page then broke in ways that did not look like a cache problem.
 - **CUDA 12.1 wheels.** A Dockerfile comment says the target GPU is GTX 1060 class and cannot run the default CUDA 12.8 wheels.
 - **Public access is opt-in.** A compose comment says a plain `up` stays VPN-only. The app has no login. A Cloudflare Access policy is the only gate, and it must be active before the tunnel first starts.
-- **At most 24 cells per job.** Reason unknown, see [KEL-39](https://linear.app/kelvinwei/issue/KEL-39).
-- **Jobs kept in memory, newest 50 only.** Reason unknown, see [KEL-40](https://linear.app/kelvinwei/issue/KEL-40).
+- **At most 24 cells per job.** Reason unknown, see KEL-39.
+- **Jobs kept in memory, newest 50 only.** Reason unknown, see KEL-40.
 
 ## Weak spots and ideas
 

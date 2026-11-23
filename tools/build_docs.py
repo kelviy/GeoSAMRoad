@@ -21,6 +21,7 @@ PATTERNS = {
         r"/mnt/[\w.-]+|/home/[a-z_][\w-]*/|/Users/[\w.-]+/|[A-Z]:\\Users\\"
     ),
     "Google Drive or Docs link": re.compile(r"(?:drive|docs)\.google\.com"),
+    "Linear link (workspace slug holds a real name)": re.compile(r"linear\.app"),
     "GitHub token": re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_\w{20,}"),
     "API key": re.compile(
         r"\bsk-[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bxox[abprs]-[\w-]{10,}"

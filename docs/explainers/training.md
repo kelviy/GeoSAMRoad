@@ -43,9 +43,9 @@ One YAML file per model holds every setting for a run. Command-line overrides ch
 - **Final mode.** The `--final` help text says it trains "on train+val" and logs test "in the val slot for monitoring". It switches the monitor to `train_road_iou` because the val slot now holds test. The warning in `apply_final_run` says a val-slot monitor "selects the checkpoint on test data".
 - **SGCN strategy.** The code comment says SGCN has unused parameters. DDP needs `find_unused_parameters` for that case.
 - **One test device.** The `--devices` help text says more than one device duplicates padded samples into the metrics.
-- **Pixel IoU picks the checkpoint, not a graph metric.** Reason unknown, see [KEL-37](https://linear.app/kelvinwei/issue/KEL-37).
-- **The LR drop at epoch 70, and 3e-4 for multispectral TerraMind.** Upstream SAM-Road drops at epoch 9 of 10. Reason unknown, see [KEL-38](https://linear.app/kelvinwei/issue/KEL-38).
-- **Where the inference thresholds came from.** The values fit `test.py`'s 256-bin output, and `test.py` only runs on the test split. Which split produced them is not recorded. Reason unknown, see [KEL-36](https://linear.app/kelvinwei/issue/KEL-36).
+- **Pixel IoU picks the checkpoint, not a graph metric.** Reason unknown, see KEL-37.
+- **The LR drop at epoch 70, and 3e-4 for multispectral TerraMind.** Upstream SAM-Road drops at epoch 9 of 10. Reason unknown, see KEL-38.
+- **Where the inference thresholds came from.** The values fit `test.py`'s 256-bin output, and `test.py` only runs on the test split. Which split produced them is not recorded. Reason unknown, see KEL-36.
 
 ## The vendored SAM-Road scripts
 

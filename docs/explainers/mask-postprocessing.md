@@ -32,14 +32,14 @@ Threshold the road mask, clean up specks, and thin the road pixels to one-pixel 
 
 ## Why it's like this
 
-- **CRESIv2, minimally adapted.** The package README says the code is for an ablation and was minimally adapted from CRESIv2. It cites the WACV 2020 paper and https://github.com/avanetten/cresi. The ablation compares what with what, and no doc records it. Reason unknown, see [KEL-45](https://linear.app/kelvinwei/issue/KEL-45).
+- **CRESIv2, minimally adapted.** The package README says the code is for an ablation and was minimally adapted from CRESIv2. It cites the WACV 2020 paper and https://github.com/avanetten/cresi. The ablation compares what with what, and no doc records it. Reason unknown, see KEL-45.
 - **What we changed from upstream.** A diff against CRESI `main` shows these changes:
   - `cresi_extract.py` is new. It replaces CRESI's config-driven `main` with one call per mask and fixes the parameters in `DEFAULTS`.
   - `skeletonize.py` comes from `04_skeletonize.py`. The `sknw_int64` branch for images over 32767 px is gone. A code comment says it no longer builds under numba 0.65, and our masks are 1024 px. The `remove_small_*` calls use the `max_size=` keyword in place of the removed `in_place=` form.
   - `wkt_to_graph.py` comes from `05_wkt_to_G.py`. The `utm`, `fiona`, `osmnx` and `osgeo` imports are gone. A code comment says only the pixel-space functions are reused.
   - `sknw.py` and `rdp.py` match upstream byte for byte, apart from line endings.
-- **The parameter values.** Upstream's tutorial config uses a threshold of 0.25, a minimum piece length of 600 px and a 12 m spur length. Its script uses a 300 px hole size. Ours are 4 px holes, 10 px spurs and 60 px pieces. Upstream's gap-bridging distances stay unchanged. Reason unknown, see [KEL-46](https://linear.app/kelvinwei/issue/KEL-46).
-- **No caller.** Commit `a204fa1` added the package. No later commit wires it into `inferencer.py`, `eval_graphs.py`, `train.py` or `triage.py`. Reason unknown, see [KEL-45](https://linear.app/kelvinwei/issue/KEL-45).
+- **The parameter values.** Upstream's tutorial config uses a threshold of 0.25, a minimum piece length of 600 px and a 12 m spur length. Its script uses a 300 px hole size. Ours are 4 px holes, 10 px spurs and 60 px pieces. Upstream's gap-bridging distances stay unchanged. Reason unknown, see KEL-46.
+- **No caller.** Commit `a204fa1` added the package. No later commit wires it into `inferencer.py`, `eval_graphs.py`, `train.py` or `triage.py`. Reason unknown, see KEL-45.
 
 ## Weak spots and ideas
 

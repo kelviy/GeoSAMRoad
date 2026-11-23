@@ -48,9 +48,9 @@ A sample is a small square crop of one tile, not the whole tile. Training picks 
 ## Why it's like this
 
 - **Bands are chosen by name.** KEL-8 dropped the S1 descending bands from the tiles, which moved later band indices. Commit 3695d4e keyed the band groups and norm stats by name "so every encoder reads the same physical bands and stats as before." `tests/geosamroad/test_band_selection.py` pins each encoder to literal band names and the stats each band had before the change.
-- **Graph radii are half of upstream.** Code comments say the upstream 16 px NMS and 64 px neighbour radius "work for 2.5m". The 5 m configs use 8 and 32, the same ground distance. The interesting-point radius is halved from 32 to 16 the same way. The 4 px subdivision step and the 4 px crossover radius are not halved. Reason unknown, see [KEL-29](https://linear.app/kelvinwei/issue/KEL-29).
+- **Graph radii are half of upstream.** Code comments say the upstream 16 px NMS and 64 px neighbour radius "work for 2.5m". The 5 m configs use 8 and 32, the same ground distance. The interesting-point radius is halved from 32 to 16 the same way. The 4 px subdivision step and the 4 px crossover radius are not halved. Reason unknown, see KEL-29.
 - **`TOPO_SAMPLE_NUM` is 128.** Upstream SAM-Road uses 128 for its 256 px patch configs and 512 for 512 px patches.
-- **Upsampling 2x a 128 px crop.** Every config does this. Reason unknown, see [KEL-30](https://linear.app/kelvinwei/issue/KEL-30).
+- **Upsampling 2x a 128 px crop.** Every config does this. Reason unknown, see KEL-30.
 - **Final runs move val into train.** `apply_final_run` in `train.py` trains on train and val and logs test in the val slot "for monitoring only". Checkpoints are picked on `train_road_iou`.
 - **The flip is ours.** Upstream `sample_patch` only rotates. `d4_augment` also flips, so `sample_patch` gained a `flip` argument to keep the points aligned with the image.
 

@@ -2,7 +2,7 @@
 
 An **explainer** is a short, human-readable doc on how one feature works. You should be able to read it in a few minutes, understand the feature well enough to reason about it, and spot things that could be better.
 
-Explainers cover how a feature works and why. They are not usage manuals, API references or changelogs. Usage manuals live next to the feature, for example `docs/cleaning/zone-package.md`.
+Explainers cover how a feature works and why. They are not usage manuals, API references or changelogs. Usage guides live in `docs/guides/`, for example `docs/guides/clean-by-hand.md`.
 
 ## Index
 

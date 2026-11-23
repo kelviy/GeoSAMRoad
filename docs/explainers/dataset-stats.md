@@ -31,10 +31,10 @@ Three small commands run on a finished dataset. `norm-stats` reads every train t
 
 ## Why it's like this
 
-- **Train split only.** The CLI help says "Pre-compute per-band mean and std over train split". No document gives the reason. Reason unknown, see [KEL-20](https://linear.app/kelvinwei/issue/KEL-20).
+- **Train split only.** The CLI help says "Pre-compute per-band mean and std over train split". No document gives the reason. Reason unknown, see KEL-20.
 - **Stats keyed by band name.** KEL-8 dropped the S1 descending bands. Its acceptance criteria require the normalisation stats to "select the same physical bands as before the change (checked by band name, not index)". Commit 3695d4e did this by keying the stats by name.
-- **Frozen stats in code, not read from `norm_stats.yaml`.** The constants arrived in the initial import commit e30bb84 with no stated reason. Reason unknown, see [KEL-21](https://linear.app/kelvinwei/issue/KEL-21).
-- **Zero treated as missing by default.** Reason unknown, see [KEL-22](https://linear.app/kelvinwei/issue/KEL-22).
+- **Frozen stats in code, not read from `norm_stats.yaml`.** The constants arrived in the initial import commit e30bb84 with no stated reason. Reason unknown, see KEL-21.
+- **Zero treated as missing by default.** Reason unknown, see KEL-22.
 
 ## Weak spots and ideas
 

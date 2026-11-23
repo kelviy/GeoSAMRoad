@@ -39,9 +39,9 @@ The model only sees small patches, so the inferencer slides a patch window over 
 
 ## Why it's like this
 
-- **The method is SAM-Road's.** Patch masks, NMS to nodes and a topology head that scores neighbour pairs all come from the vendored SAM-Road code. Our `inferencer.py` rewrites its `infer_one_tile` for ROSA tiles. It drops the 64 px margin that the SAM-Road patch grid keeps from the image edge, starting at 0 instead. It adds the coverage check, the centreline thinning, the CPU feature cache and the output in native-pixel x, y. Reason for each change unknown, see [KEL-34](https://linear.app/kelvinwei/issue/KEL-34).
-- **Thinning before NMS.** Commit `a204fa1` added `THIN_BEFORE_NMS` and turned it on in every HPC config. Its code comment says the thin mask is "the centreline the graph points". Reason unknown, see [KEL-35](https://linear.app/kelvinwei/issue/KEL-35).
-- **Per-model thresholds.** `GeoSAMRoad.on_test_end` prints the threshold with the best F1 for keypoints, roads and topology, from a 256-bin precision-recall curve. The config values are all multiples of 1/255, which matches those bins. Which split they were tuned on is unknown, see [KEL-36](https://linear.app/kelvinwei/issue/KEL-36).
+- **The method is SAM-Road's.** Patch masks, NMS to nodes and a topology head that scores neighbour pairs all come from the vendored SAM-Road code. Our `inferencer.py` rewrites its `infer_one_tile` for ROSA tiles. It drops the 64 px margin that the SAM-Road patch grid keeps from the image edge, starting at 0 instead. It adds the coverage check, the centreline thinning, the CPU feature cache and the output in native-pixel x, y. Reason for each change unknown, see KEL-34.
+- **Thinning before NMS.** Commit `a204fa1` added `THIN_BEFORE_NMS` and turned it on in every HPC config. Its code comment says the thin mask is "the centreline the graph points". Reason unknown, see KEL-35.
+- **Per-model thresholds.** `GeoSAMRoad.on_test_end` prints the threshold with the best F1 for keypoints, roads and topology, from a 256-bin precision-recall curve. The config values are all multiples of 1/255, which matches those bins. Which split they were tuned on is unknown, see KEL-36.
 
 ## Weak spots and ideas
 

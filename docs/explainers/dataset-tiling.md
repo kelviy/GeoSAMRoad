@@ -37,10 +37,10 @@ Each zone is one large image. Lay the road vectors directly on top of it and bur
 
 ## Why it's like this
 
-- **Fixed grid from the top-left corner, no overlap, partial edge squares discarded.** Reason unknown, see [KEL-13](https://linear.app/kelvinwei/issue/KEL-13). The cleaning spec keeps the grid fixed for now, and `docs/cleaning/open-directions.md` discusses moving tiles to cover more valuable roads.
-- **Split per zone, not per tile.** Reason unknown, see [KEL-14](https://linear.app/kelvinwei/issue/KEL-14).
-- **Drop road-free tiles, and drop a tile for a single NaN pixel.** Reason unknown, see [KEL-15](https://linear.app/kelvinwei/issue/KEL-15).
-- **Per-tile contrast stretch for the enhanced RGB.** Reason unknown, see [KEL-16](https://linear.app/kelvinwei/issue/KEL-16).
+- **Fixed grid from the top-left corner, no overlap, partial edge squares discarded.** Reason unknown, see KEL-13. The cleaning spec keeps the grid fixed for now, and `docs/cleaning/open-directions.md` discusses moving tiles to cover more valuable roads.
+- **Split per zone, not per tile.** Reason unknown, see KEL-14.
+- **Drop road-free tiles, and drop a tile for a single NaN pixel.** Reason unknown, see KEL-15.
+- **Per-tile contrast stretch for the enhanced RGB.** Reason unknown, see KEL-16.
 - **Naive overlay.** The raw labels are the frozen baseline that cleaning starts from, so they must be reproducible from the source layer alone. Correcting labels against the imagery is the cleaning spec's job, as ADR 0001 sets out.
 
 ## Weak spots and ideas
