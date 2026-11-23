@@ -2,7 +2,7 @@
 
 How the review core in `sentinel2data.cleaning.review` steps an annotator through a zone's proposals, flags and kept tiles, and writes each decision into the zone GeoPackage. `sentinel2data.cli progress` reports how far each zone has got, `sentinel2data.cli needs-qgis` lists the flags left for plain QGIS editing, and `sentinel2data.cli precision` reports how often each detector's flags turned out real.
 
-> **Status, 2026-11-23.** KEL-52 built the core: the queue, flag decisions, tile review and progress. KEL-54 added going back to change a decision, resuming, filters, hidden detectors and the `needs_qgis` list. KEL-55 added the precision report. KEL-56 added accepting and rejecting proposals. The QGIS plugin that will sit on top does not exist yet. [detectors.md](detectors.md) describes where the flags come from.
+> **Status, 2026-11-23.** KEL-52 built the core: the queue, flag decisions, tile review and progress. KEL-54 added going back to change a decision, resuming, filters, hidden detectors and the `needs_qgis` list. KEL-55 added the precision report. KEL-56 added accepting and rejecting proposals. KEL-57 added the QGIS plugin, which [review-plugin.md](review-plugin.md) describes. [detectors.md](detectors.md) describes where the flags come from.
 
 ## Core idea
 

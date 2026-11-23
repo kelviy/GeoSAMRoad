@@ -16,6 +16,7 @@ Explainers cover how a feature works and why. They are not usage manuals, API re
 | [zone-cleaning.md](zone-cleaning.md) | How `package-zones` turns the frozen baseline into a zone package for cleaning in QGIS |
 | [detectors.md](detectors.md) | How `detect` runs model-agnostic detectors over zone packages and writes their flags |
 | [review-queue.md](review-queue.md) | How the review core steps an annotator through a zone's proposals, flags and kept tiles, writes each decision into the zone GeoPackage, accepts or rejects proposals, and undoes a changed decision. Also covers filters, hidden detectors, resuming, and what `progress`, `needs-qgis` and `precision` report |
+| [review-plugin.md](review-plugin.md) | How the QGIS plugin docks the review queue, drives the review core through the review service, and keeps QGIS's unsaved edits and the core's writes from overwriting each other |
 | [zone-assignment.md](zone-assignment.md) | How `assign-zones` splits the zones between annotators and picks the shared test zones |
 | [training-data.md](training-data.md) | How `SAMROAD_Dataset` turns ROSA tiles into cropped, upsampled, augmented samples with road, keypoint and graph labels |
 | [models.md](models.md) | How `GeoSAMRoad` segments road and keypoint masks, scores links with TopoNet, and what the sam, terramind, unet and sgcn variants swap |

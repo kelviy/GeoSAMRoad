@@ -54,3 +54,31 @@ Field behaviour in the labels layer:
 * `road_class` of an existing road can't be changed (an enforced constraint): existing roads are never reclassified.
 * **Never delete a row.** QGIS can't block the delete tool, so set `status = deleted` instead. The packager treats a missing row as cleaning work.
 * `status` is **not** set for you when you move a raw road: set it to `modified` yourself.
+
+## Review queue panel
+
+The review queue plugin steps you through the zone's proposals, flags and kept tiles in a docked panel.
+
+Install it once per machine, from the repo, with the Python that has the repo installed:
+
+```sh
+python -m sentinel2data.cli install-qgis-plugin [--profile-dir <QGIS profile folder>]
+```
+
+This copies the plugin into the QGIS `default` profile, next to the other plugins, and records that Python for the plugin to use. Run it again after updating the repo. Then, in QGIS:
+
+1. Open **Plugins > Manage and Install Plugins**, select **Installed**, and enable **ROSA review queue**.
+2. Check that your computer account has a full name. QGIS reads it from the operating system, and every decision records it. If it is missing, the panel says so.
+3. Open the zone's `<zone>.qgs`. The panel docks on the right and goes to the first item not done, or to where you stopped. To show it again, use **Plugins > ROSA review queue > Review queue panel**.
+4. Click the panel so it has focus, then press one key per item. The keys work only while the panel has focus:
+
+| Item | Keys |
+| --- | --- |
+| Proposal | `A` accept, `X` reject, `Q` needs QGIS |
+| Flag | `R` real, `N` not a defect, `Q` needs QGIS |
+| Kept tile | type an optional note, then `T` or Enter for reviewed |
+| Any | `B` back, `F` forward, `S` Sentinel-2 RGB on or off |
+
+The map zooms to each item and selects it. The filters narrow the queue to one kind, flag type or source. To change a decision, go back to the item and press another key.
+
+Draw fixes with the normal QGIS editing tools. You can edit between items: the panel saves your unsaved edits before it writes a decision. If QGIS cannot save them, the panel writes nothing and shows QGIS's errors.

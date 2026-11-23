@@ -127,6 +127,10 @@ _Avoid_: Triage, worklist
 The review queue's logic in plain Python, with no QGIS dependency. It builds the queue, records decisions and reports progress, and reads and writes only the zone GeoPackage. The QGIS plugin is a thin layer on top.
 _Avoid_: Review backend, queue engine
 
+**Review service**:
+The review core run as a separate process that answers one JSON request per line. It runs in the repo's Python, because QGIS's Python lacks the core's libraries. The QGIS plugin starts it and sends it one request per key.
+_Avoid_: Review server, review API
+
 **Review position**:
 The queue item an annotator stepped to by going back or forward, stored in the zone GeoPackage so that reopening the zone resumes there. A decision clears it, and the queue then continues at the first item not done.
 _Avoid_: Cursor, bookmark

@@ -283,6 +283,22 @@ def precision(
         typer.echo(line(overall, group, c))
 
 
+@app.command("install-qgis-plugin")
+def install_qgis_plugin(
+    profile_dir: Annotated[
+        Optional[Path],
+        typer.Option(help="QGIS 3 profile folder (default: the `default` profile of this user)"),
+    ] = None,
+):
+    """Install the review queue plugin into QGIS, run by this Python. Then enable it in Plugins > Manage and Install Plugins."""
+    import sys
+
+    from sentinel2data.cleaning import plugin_install
+
+    target = plugin_install.install(profile_dir or plugin_install.default_profile_dir(), sys.executable)
+    typer.echo(f"Installed the review queue plugin into {target}, using {sys.executable}")
+
+
 @app.command()
 def roads(
     out: Annotated[

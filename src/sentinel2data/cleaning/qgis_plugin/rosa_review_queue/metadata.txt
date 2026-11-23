@@ -1,0 +1,10 @@
+[general]
+name=ROSA review queue
+qgisMinimumVersion=3.34
+description=Steps an annotator through a ROSA zone's proposals, flags and kept tiles, one key per decision.
+about=A docked panel over the GeoSAMRoad review core. It runs the core in the repo's Python through the review service, so the decisions land in the zone GeoPackage exactly as the review core writes them. Install it with `python -m sentinel2data.cli install-qgis-plugin`.
+version=0.1.0
+author=GeoSAMRoad
+email=none@example.invalid
+category=Vector
+experimental=True
