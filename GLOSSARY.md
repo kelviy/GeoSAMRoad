@@ -67,6 +67,14 @@ _Avoid_: Checker, rule, triage
 A marker a detector places at a suspected defect location, possibly involving several roads or none (a missing road). An annotator decides whether it is a real defect. A flag never changes a label by itself.
 _Avoid_: Issue, warning, annotation
 
+**Flag key**:
+A flag's identity across detector runs: the same suspected defect gets the same key every run, so a re-run can find the flag it placed before.
+_Avoid_: Flag id, fid
+
+**Detector run**:
+One run of the detectors over a zone, recorded in the zone GeoPackage with its time and full config.
+_Avoid_: Job, pass
+
 **Proposal**:
 A flag that also carries a suggested label revision (e.g. a connector line closing a gap), which an annotator accepts or rejects.
 _Avoid_: Suggestion, auto-fix
@@ -88,8 +96,12 @@ The folder an annotator opens to clean one zone: the zone's GeoPackage, its QGIS
 _Avoid_: Zone bundle, workspace
 
 **Cleaning work**:
-Any change an annotator or detector has made to a zone package since it was packaged. Cleaning work is never overwritten by accident.
+Any change an annotator has made to a zone package since it was packaged, including a decision on a flag. Pending detector output is not cleaning work. Cleaning work is never overwritten by accident.
 _Avoid_: Edits, progress
+
+**Pending detector output**:
+The flags and proposals a detector has written that no annotator has decided on or edited. A detector run regenerates them, so repackaging may drop them.
+_Avoid_: Draft flags, unreviewed work
 
 ## Imagery
 

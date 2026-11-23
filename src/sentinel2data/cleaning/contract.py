@@ -6,6 +6,7 @@ RAW_LABELS_LAYER = "raw_labels"
 LABELS_LAYER = "labels"
 TILES_LAYER = "tiles"
 FLAGS_LAYER = "flags"
+DETECTOR_RUNS_LAYER = "detector_runs"
 
 # labels
 LABEL_STATUSES = ("kept", "modified", "added", "deleted", "proposed")
@@ -14,10 +15,28 @@ DEFECTS = ("gap", "stub", "misalignment", "phantom", "missing", "temporal")
 # flags: point or polygon locations (the QGIS project shows Point and Polygon
 # rows; write single-part geometries).
 FLAG_TYPES = ("gap", "stub", "duplicate", "crossing", "missing?", "phantom?")
-FLAG_DECISIONS = ("pending", "real", "not_defect", "needs_qgis")
-# Flag fields: type, detector, source, raw_ids (comma-separated raw_id values
-# involved), proposal_fid (fid of the flag's ``proposed`` row in labels, when
-# the flag is a proposal), decision, annotator.
+PENDING = "pending"
+FLAG_DECISIONS = (PENDING, "real", "not_defect", "needs_qgis")
+
+# Field -> pandas dtype, in layer order.
+FLAG_FIELDS = {
+    # Set by the detector and the same for the same suspected defect on every
+    # run, so a re-run can match the flag it placed before.
+    "flag_key": "string",
+    "type": "string",
+    "detector": "string",
+    "source": "string",
+    "raw_ids": "string",  # comma-separated raw_id values involved
+    "proposal_fid": "Int64",  # fid of the flag's ``proposed`` row in labels, if it is a proposal
+    "decision": "string",
+    "annotator": "string",
+}
+
+# A table with no geometry, one row per detector run.
+DETECTOR_RUN_FIELDS = {
+    "run_at": "string",  # ISO 8601, UTC
+    "config": "string",  # the run's full detector config, as JSON
+}
 
 # Classes an annotator may give an added road; the first is the default.
 ADDED_ROAD_CLASSES = ("Other Road", "Main Road", "Street")

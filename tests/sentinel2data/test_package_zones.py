@@ -36,7 +36,8 @@ CONTRACT = {
     "raw_labels": ["raw_id", *LABEL_ROAD_FIELDS],
     "labels": ["raw_id", "status", "defect", "annotator", *LABEL_ROAD_FIELDS],
     "tiles": ["tile_id", "row", "col", "status", "reviewed", "note", "annotator"],
-    "flags": ["type", "detector", "source", "raw_ids", "proposal_fid", "decision", "annotator"],
+    "flags": ["flag_key", "type", "detector", "source", "raw_ids", "proposal_fid", "decision", "annotator"],
+    "detector_runs": ["run_at", "config"],
 }
 
 
@@ -152,6 +153,12 @@ def test_flags_layer_is_empty_and_holds_points_or_areas(packaged):
     assert info["geometry_type"] == "Unknown"
 
 
+def test_detector_run_layer_is_an_empty_table(packaged):
+    info = pyogrio.read_info(gpkg_path(packaged), layer="detector_runs")
+    assert info["features"] == 0
+    assert info["geometry_type"] is None
+
+
 def test_every_zone_is_packaged_by_default_and_zone_selects_one(packaged, shared_synthetic_zone, baseline, tmp_path):
     for zone in (TRAIN_ZONE, VAL_ZONE, TEST_ZONE):
         assert gpkg_path(packaged, zone).is_file()
@@ -192,6 +199,36 @@ def append(row):
     return change
 
 
+def add_rows(out, layer, rows):
+    """Append rows to a layer of the train zone, keeping the fids already there."""
+    crs = pyogrio.read_info(gpkg_path(out), layer=layer)["crs"]
+    pyogrio.write_dataframe(gpd.GeoDataFrame(rows, geometry="geometry", crs=crs), gpkg_path(out), layer=layer, append=True)
+
+
+# An annotator name on a row stands for QGIS stamping it when someone saved it.
+
+def add_proposed_label(out, annotator=None) -> int:
+    """A ``proposed`` connector across a gap, as a detector writes it. Returns its fid."""
+    add_rows(out, "labels", [{
+        "status": "proposed", "defect": "gap", "annotator": annotator, "road_class": "Street", "buffer": 4.0,
+        "geometry": LineString([(370_300, 6_249_300), (370_330, 6_249_300)]),
+    }])
+    labels = pyogrio.read_dataframe(gpkg_path(out), layer="labels", fid_as_index=True)
+    return int(labels.index[labels["status"] == "proposed"].max())
+
+
+def add_flag(decision, proposal=False, flag_annotator=None, label_annotator=None):
+    """A detector's gap flag with ``decision``. With ``proposal``, the flag points
+    at a new ``proposed`` label row."""
+    def edit(out):
+        add_rows(out, "flags", [{
+            "flag_key": "gap:1", "type": "gap", "detector": "gap", "raw_ids": "1",
+            "proposal_fid": add_proposed_label(out, label_annotator) if proposal else None,
+            "decision": decision, "annotator": flag_annotator, "geometry": Point(370_300, 6_249_300),
+        }])
+    return edit
+
+
 CLEANING_WORK = {
     "label status": edit_layer("labels", set_value("status", "deleted", lambda g: g["raw_id"] == 1)),
     "label annotator": edit_layer("labels", set_value("annotator", "ann")),
@@ -202,7 +239,18 @@ CLEANING_WORK = {
     })),
     "tile reviewed": edit_layer("tiles", set_value("reviewed", True, lambda g: g["status"] == "kept")),
     "tile note": edit_layer("tiles", set_value("note", "check")),
-    "flag": edit_layer("flags", append({"type": "gap", "decision": "pending", "geometry": Point(370_300, 6_249_300)})),
+    **{f"{decision} flag": add_flag(decision) for decision in ("real", "not_defect", "needs_qgis")},
+    "flag with no decision": add_flag(None),
+    "proposal with a decided flag": add_flag("real", proposal=True),
+    "proposed label with no flag": add_proposed_label,
+    "pending flag an annotator saved": add_flag("pending", flag_annotator="ann"),
+    "pending proposal an annotator edited": add_flag("pending", proposal=True, label_annotator="ann"),
+}
+
+# Pending detector output is cheap to regenerate, so it is not cleaning work.
+DETECTOR_OUTPUT = {
+    "pending flag": add_flag("pending"),
+    "pending proposal": add_flag("pending", proposal=True),
 }
 
 
@@ -217,6 +265,34 @@ def test_repackaging_an_unedited_zone_rebuilds_it(fresh_package, shared_syntheti
     before = raw_id_map(fresh_package)
     run_package(shared_synthetic_zone, baseline, fresh_package, "--zone", TRAIN_ZONE)
     assert raw_id_map(fresh_package) == before
+
+
+@pytest.mark.parametrize("edit", DETECTOR_OUTPUT, ids=list(DETECTOR_OUTPUT))
+def test_repackaging_a_zone_with_only_pending_detector_output_rebuilds_it(
+    edit, fresh_package, shared_synthetic_zone, baseline
+):
+    before = raw_id_map(fresh_package)
+    DETECTOR_OUTPUT[edit](fresh_package)
+    assert pyogrio.read_info(gpkg_path(fresh_package), layer="flags")["features"] == 1
+
+    run_package(shared_synthetic_zone, baseline, fresh_package, "--zone", TRAIN_ZONE)
+    assert pyogrio.read_info(gpkg_path(fresh_package), layer="flags")["features"] == 0
+    assert set(read_layer(fresh_package, "labels")["status"]) == {"kept"}
+    assert raw_id_map(fresh_package) == before
+
+
+def test_a_pending_proposal_does_not_hide_other_label_work(fresh_package, shared_synthetic_zone, baseline):
+    DETECTOR_OUTPUT["pending proposal"](fresh_package)
+    CLEANING_WORK["label annotator"](fresh_package)
+    result = run_package(shared_synthetic_zone, baseline, fresh_package, "--zone", TRAIN_ZONE, expect_ok=False)
+    assert result.exit_code != 0 and "--overwrite" in result.output
+
+
+def test_a_proposed_label_whose_flag_is_decided_is_label_work(fresh_package, shared_synthetic_zone, baseline):
+    CLEANING_WORK["proposal with a decided flag"](fresh_package)
+    result = run_package(shared_synthetic_zone, baseline, fresh_package, "--zone", TRAIN_ZONE, expect_ok=False)
+    assert "1 decided flag(s)" in result.output
+    assert "1 label(s) with a status other than kept" in result.output
 
 
 @pytest.mark.parametrize("edit", CLEANING_WORK, ids=list(CLEANING_WORK))
@@ -418,6 +494,7 @@ def test_flags_load_as_point_and_area_views_with_a_decision_list(qgis_report):
         fields = layers[name]["fields"]
         assert fields["decision"]["values"] == ["pending", "real", "not_defect", "needs_qgis"]
         assert fields["type"]["values"] == ["gap", "stub", "duplicate", "crossing", "missing?", "phantom?"]
+        assert not any(fields[f]["editable"] for f in ("flag_key", "type", "detector", "raw_ids", "proposal_fid"))
 
 
 def test_splitting_a_label_keeps_its_raw_id_and_attributes_on_both_pieces(qgis_report):

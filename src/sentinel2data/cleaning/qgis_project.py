@@ -23,10 +23,12 @@ from sentinel2data.cleaning.contract import (
     ADDED_ROAD_CLASSES,
     DEFECTS,
     FLAG_DECISIONS,
+    FLAG_FIELDS,
     FLAG_TYPES,
     FLAGS_LAYER,
     LABEL_STATUSES,
     LABELS_LAYER,
+    PENDING,
     RAW_LABELS_LAYER,
     ROAD_BUFFER,
     ROAD_SCALE,
@@ -281,13 +283,10 @@ def write_zone_project(path, *, gpkg, s2_rgb, crs, extent, road_columns):
         order.append(layer_id)
 
     # Flags: two typed views of one generic-geometry table.
-    flag_fields = {
+    # Detectors fill every flag field except the annotator's decision.
+    flag_fields = {name: {"readonly": True} for name in FLAG_FIELDS} | {
         "type": {"widget": _value_map(FLAG_TYPES), "readonly": True},
-        "detector": {"readonly": True},
-        "source": {"readonly": True},
-        "raw_ids": {"readonly": True},
-        "proposal_fid": {"readonly": True},
-        "decision": {"widget": _value_map(FLAG_DECISIONS), "default": ("'pending'", False)},
+        "decision": {"widget": _value_map(FLAG_DECISIONS), "default": (f"'{PENDING}'", False)},
         "annotator": {"default": (ANNOTATOR_DEFAULT, True)},
     }
     for layer_id, name, geom_filter, geometry, wkb, symbol in (

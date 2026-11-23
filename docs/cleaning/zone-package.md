@@ -17,7 +17,7 @@ Each `<zone>/` folder holds:
 
 | File | What it is |
 | --- | --- |
-| `<zone>.gpkg` | The zone GeoPackage: `raw_labels`, `labels`, `tiles`, `flags` |
+| `<zone>.gpkg` | The zone GeoPackage: `raw_labels`, `labels`, `tiles`, `flags`, `detector_runs` |
 | `<zone>.qgs` | The QGIS project. Open this. |
 | `<zone>_s2_rgb.tif` | The zone's Sentinel-2 RGB, enhanced (gamma + CLAHE) |
 
@@ -25,7 +25,9 @@ All paths in the project are relative, so the folder can be copied to another ma
 
 ## Re-packaging
 
-Re-packaging rebuilds a zone whose GeoPackage is unedited. It **refuses** a zone with any cleaning work: changed label status, defect, annotator or geometry, added rows, reviewed tiles, tile notes, or any flags. `--overwrite` repackages it anyway, after moving the old file aside as `<zone>.gpkg.<timestamp>.bak`. A zone open in QGIS is never repackaged: close it first.
+Re-packaging rebuilds a zone whose GeoPackage is unedited. It **refuses** a zone with any cleaning work: changed label status, defect, annotator or geometry, added rows, reviewed tiles, tile notes, or decided flags. `--overwrite` repackages such a zone anyway, after moving the old file aside as `<zone>.gpkg.<timestamp>.bak`. A zone open in QGIS is never repackaged: close it first.
+
+Pending detector output is not cleaning work. That is every `pending` flag and every `proposed` road a pending flag points at, as long as no one has saved a change to it in QGIS. Repackaging drops it, and re-running the detectors brings it back.
 
 `raw_id` depends only on each road's geometry and class, so it is the same every time a zone is packaged from the same baseline. A road that leaves and re-enters the zone is cut by the zone edge into pieces, and each piece is its own raw row.
 

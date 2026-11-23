@@ -2,7 +2,8 @@
 
 ``<output_dir>/<zone>/`` holds:
 
-* ``<zone>.gpkg``: the zone GeoPackage (raw labels, labels, tiles, flags).
+* ``<zone>.gpkg``: the zone GeoPackage (raw labels, labels, tiles, flags,
+  detector runs).
 * ``<zone>.qgs``: the QGIS project an annotator opens (see ``qgis_project``).
 * ``<zone>_s2_rgb.tif``: the zone's Sentinel-2 RGB, enhanced the way the
   generator's enhanced-RGB bands are (gamma + CLAHE), as 8-bit with 0 = no data.
@@ -21,8 +22,12 @@ import shapely
 import yaml
 
 from sentinel2data.cleaning.contract import (
+    DETECTOR_RUN_FIELDS,
+    DETECTOR_RUNS_LAYER,
+    FLAG_FIELDS,
     FLAGS_LAYER,
     LABELS_LAYER,
+    PENDING,
     RAW_LABELS_LAYER,
     TILES_LAYER,
 )
@@ -162,24 +167,16 @@ def tile_grid(tile_status_path) -> gpd.GeoDataFrame:
     )
 
 
-def empty_flags(crs) -> gpd.GeoDataFrame:
-    def empty_column(dtype):
-        return pd.Series([], dtype=dtype)
+def _empty_table(fields: dict) -> pd.DataFrame:
+    return pd.DataFrame({name: pd.Series([], dtype=dtype) for name, dtype in fields.items()})
 
-    text = ("type", "detector", "source", "raw_ids")
-    return gpd.GeoDataFrame(
-        {
-            **{name: empty_column("string") for name in text},
-            "proposal_fid": empty_column("Int64"),
-            "decision": empty_column("string"),
-            "annotator": empty_column("string"),
-        },
-        geometry=gpd.GeoSeries([], crs=crs),
-    )
+
+def empty_flags(crs) -> gpd.GeoDataFrame:
+    return gpd.GeoDataFrame(_empty_table(FLAG_FIELDS), geometry=gpd.GeoSeries([], crs=crs))
 
 
 def write_zone_gpkg(path, raw, tiles):
-    """Write the four contract layers to a fresh GeoPackage at ``path``."""
+    """Write the contract layers to a fresh GeoPackage at ``path``."""
     path = Path(path)
     if path.exists():
         path.unlink()
@@ -188,6 +185,8 @@ def write_zone_gpkg(path, raw, tiles):
     tiles.to_file(path, layer=TILES_LAYER, driver="GPKG", geometry_type="Polygon")
     # Flags hold points or areas, so the layer's geometry type is generic.
     empty_flags(raw.crs).to_file(path, layer=FLAGS_LAYER, driver="GPKG", geometry_type="Unknown")
+    # A plain DataFrame, so pyogrio writes a table with no geometry column.
+    pyogrio.write_dataframe(_empty_table(DETECTOR_RUN_FIELDS), path, layer=DETECTOR_RUNS_LAYER, driver="GPKG")
 
 
 def write_s2_rgb(cog_path, out_path):
@@ -214,18 +213,32 @@ def write_s2_rgb(cog_path, out_path):
 def zone_cleaning_work(gpkg) -> list:
     """What cleaning work a zone GeoPackage holds, as short descriptions.
 
-    Empty when the GeoPackage is exactly as packaged. A file that is not a
-    readable zone GeoPackage counts as cleaning work, so it is never replaced silently.
+    Empty when the GeoPackage is as packaged, apart from pending detector
+    output, which a detector re-run regenerates: ``pending`` flags and the
+    ``proposed`` label rows they point at. A row with an ``annotator`` is not
+    detector output, because QGIS stamps the annotator when someone saves the
+    row. A file that is not a readable zone GeoPackage counts as cleaning
+    work, so it is never replaced silently.
     """
     try:
         raw = gpd.read_file(gpkg, layer=RAW_LABELS_LAYER)
-        labels = gpd.read_file(gpkg, layer=LABELS_LAYER)
+        labels = gpd.read_file(gpkg, layer=LABELS_LAYER, fid_as_index=True)
         tiles = gpd.read_file(gpkg, layer=TILES_LAYER)
-        n_flags = pyogrio.read_info(gpkg, layer=FLAGS_LAYER)["features"]
+        flags = pyogrio.read_dataframe(gpkg, layer=FLAGS_LAYER, read_geometry=False)
+        pending = flags["decision"] == PENDING
+        untouched = flags["annotator"].isna()
     except Exception as exc:  # noqa: BLE001 - any failure means "don't touch it"
         return [f"not a readable zone GeoPackage: {exc}"]
 
     work = []
+    if not pending.all():
+        work.append(f"{int((~pending).sum())} decided flag(s)")
+    if not untouched.all():
+        work.append(f"{int((~untouched).sum())} flag(s) an annotator saved")
+    detector_flags = pending & untouched
+    pending_proposals = set(flags.loc[detector_flags, "proposal_fid"].dropna().astype(int))
+    proposed = set(labels.index[(labels["status"] == "proposed") & labels["annotator"].isna()])
+    labels = labels.drop(index=list(proposed & pending_proposals))
     if len(labels) != len(raw) or set(labels["raw_id"].dropna()) != set(raw["raw_id"]):
         work.append(f"labels has {len(labels)} rows for {len(raw)} raw rows")
     if (labels["status"] != "kept").any():
@@ -243,8 +256,6 @@ def zone_cleaning_work(gpkg) -> list:
     for col in ("note", "annotator"):
         if tiles[col].notna().any():
             work.append(f"tiles with a {col}")
-    if n_flags:
-        work.append(f"{n_flags} flag(s)")
     return work
 
 
