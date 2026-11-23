@@ -55,7 +55,18 @@ def shared_zones(zones: pd.DataFrame) -> list[str]:
     return shared
 
 
-def assign(zones: pd.DataFrame, annotators: list[str]) -> pd.DataFrame:
+def check_shared_zones(zones: pd.DataFrame, chosen: list[str]) -> list[str]:
+    """``chosen`` if it names exactly one known zone per stratum."""
+    stratum = zones.set_index("zone")["urbanisation"]
+    unknown = sorted(set(chosen) - set(stratum.index))
+    if unknown:
+        raise ValueError(f"unknown shared zones: {unknown}")
+    if sorted(stratum[z] for z in chosen) != sorted(STRATA):
+        raise ValueError(f"shared zones must be one per stratum {STRATA}, got {list(chosen)}")
+    return list(chosen)
+
+
+def assign(zones: pd.DataFrame, annotators: list[str], shared: list[str] | None = None) -> pd.DataFrame:
     """One row per copy an annotator cleans. Each zone has one ``published``
     copy, its owner's. A ``shared`` zone has a copy for every annotator.
 
@@ -63,12 +74,15 @@ def assign(zones: pd.DataFrame, annotators: list[str]) -> pd.DataFrame:
     stratum's other zones, longest first, go to whoever owns the fewest zones
     of that stratum, then the least road km of non-shared zones, then comes
     first in ``annotators``.
+
+    ``shared`` replaces the median picks with chosen zones, one per stratum.
     """
     unknown = sorted(set(zones["urbanisation"]) - set(STRATA))
     if unknown:
         raise ValueError(f"urbanisation not in {STRATA}: {unknown}")
     km = zones.set_index("zone")["road_km"]
-    shared = sorted(shared_zones(zones), key=lambda z: (-km[z], z))
+    picked = shared_zones(zones) if shared is None else check_shared_zones(zones, shared)
+    shared = sorted(picked, key=lambda z: (-km[z], z))
     owner = {zone: annotators[i % len(annotators)] for i, zone in enumerate(shared)}
     # Everyone cleans every shared zone, so only the other zones' km differ.
     other_km = dict.fromkeys(annotators, 0.0)

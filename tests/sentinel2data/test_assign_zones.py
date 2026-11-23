@@ -159,3 +159,31 @@ def test_refuses_an_unknown_urbanisation_class(tmp_path):
     result = run_assign(write_baseline(tmp_path / "baseline", zones), tmp_path / "out.csv")
     assert result.exit_code != 0
     assert "Suburban" in result.output
+
+
+def test_chosen_shared_zones_replace_the_median_picks(baseline, tmp_path):
+    chosen = ["U1_-26p01_28p01_Urban", "P1_-30p01_20p01_PeriUrban", "R1_-31p01_21p01_Rural"]
+    out = tmp_path / "out.csv"
+    args = ["assign-zones", "--dataset-dir", str(baseline), "--out", str(out)]
+    for name in ANNOTATORS:
+        args += ["--annotator", name]
+    for zone in chosen:
+        args += ["--shared-zone", zone]
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 0, result.output + repr(result.exception)
+    assignment = pd.read_csv(out)
+    assert shared_zones(assignment) == sorted(chosen)
+    assert sorted(assignment.loc[assignment["published"], "zone"]) == sorted(ZONES)
+
+
+@pytest.mark.parametrize("chosen", [
+    ["U1_-26p01_28p01_Urban", "U2_-26p02_28p02_Urban", "R1_-31p01_21p01_Rural"],
+    ["U1_-26p01_28p01_Urban", "P1_-30p01_20p01_PeriUrban", "Nowhere_-1p0_1p0_Rural"],
+])
+def test_refuses_chosen_shared_zones_that_are_not_one_per_stratum(baseline, tmp_path, chosen):
+    args = ["assign-zones", "--dataset-dir", str(baseline), "--out", str(tmp_path / "out.csv")]
+    for name in ANNOTATORS:
+        args += ["--annotator", name]
+    for zone in chosen:
+        args += ["--shared-zone", zone]
+    assert CliRunner().invoke(app, args).exit_code != 0

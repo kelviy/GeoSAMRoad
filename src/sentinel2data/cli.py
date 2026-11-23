@@ -300,6 +300,10 @@ def assign_zones(
         typer.Option(help="Annotator name. Repeat for each, in a fixed order: the order decides ties"),
     ],
     out: Annotated[Path, typer.Option(help="Output CSV, one row per zone copy an annotator cleans")],
+    shared_zone: Annotated[
+        Optional[List[str]],
+        typer.Option(help="Shared zone to use instead of the median pick. Give one per stratum"),
+    ] = None,
 ):
     """Assign zones to annotators by urbanisation and road km, with one shared test zone per stratum."""
     from sentinel2data.cleaning.assignment import assign, workload, zone_table
@@ -307,7 +311,7 @@ def assign_zones(
     if len(set(annotator)) != len(annotator) or len(annotator) < 2:
         raise typer.BadParameter("give at least two distinct --annotator names")
     try:
-        table = assign(zone_table(dataset_dir), annotator)
+        table = assign(zone_table(dataset_dir), annotator, shared_zone or None)
     except ValueError as err:
         raise typer.BadParameter(str(err)) from err
     table.round({"road_km": 2}).to_csv(out, index=False)

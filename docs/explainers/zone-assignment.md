@@ -9,7 +9,7 @@ Every zone gets one owner, whose cleaned label is the one published. Within each
 ## How it works
 
 1. **Measure each zone.** `zone_table` reads the baseline's `metadata.parquet`. It takes each kept tile's zone from its image filename, sums the length of the tile's road graph, and adds up the tiles of each zone into `road_km`, together with the split and the urbanisation class.
-2. **Pick the shared zones.** `shared_zones` takes, for Urban, PeriUrban and Rural, the median `road_km` over all zones of that stratum. It picks the test zone nearest that median.
+2. **Pick the shared zones.** `shared_zones` takes, for Urban, PeriUrban and Rural, the median `road_km` over all zones of that stratum. It picks the test zone nearest that median. `--shared-zone`, given once per stratum, replaces these picks with zones the team chose.
 3. **Give out the shared zones.** They go to the annotators in name order, longest first, so with three annotators each owns one.
 4. **Deal out the rest.** For each stratum in turn, Urban, then PeriUrban, then Rural, the other zones go out longest first. Each zone goes to the annotator with the fewest zones of that stratum. A tie goes to the one with the least road km of non-shared zones, then to whoever comes first in the name order.
 5. **Write the CSV.** One row per copy someone cleans, with `zone`, `split`, `urbanisation`, `road_km`, `annotator`, `published` and `shared`. `published` is true for the owner's copy only. `shared` is true for all three copies of a shared zone, which are the three independent cleanings that agreement compares. The CLI also prints each annotator's zone counts per stratum and their copies and road km to clean in all.
@@ -19,8 +19,8 @@ Every zone gets one owner, whose cleaned label is the one published. Within each
 - **Road km is what the annotator has to look at.** The tile road graphs hold the raw labels clipped to kept tiles. On `SucculentKaroo_-30p88_18p74_Rural` their total matches the zone package's `raw_labels` clipped to its kept tiles to within 1 mm (188.4 km). Roads in dropped or untiled areas do not count, because nobody cleans them.
 - **Shared zones do not count towards the km balance.** Every annotator cleans all three, so their km is the same for everyone. Counting them only for the owner would let the owner of a long shared zone take fewer other zones. On baseline v2 that made the Johannesburg owner about 2,600 km lighter than the others.
 - **Name order breaks ties.** The same names in a different order give a different assignment. Agree the order once and keep it.
-- **Refusals.** A stratum with no test zone, or a zone whose urbanisation class is not Urban, PeriUrban or Rural, stops the command with an error. Fewer than two names, or a repeated name, does too.
-- **On baseline v2** each annotator cleans 21 to 23 copies and 21,660 to 21,743 km. The shared zones are Johannesburg (Urban, 3,627 km), AlexanderBay (PeriUrban, 215 km) and SucculentKaroo `-30p88_18p74` (Rural, 188 km).
+- **Refusals.** Chosen shared zones that are unknown or not one per stratum, a stratum with no test zone, or a zone whose urbanisation class is not Urban, PeriUrban or Rural, stops the command with an error. Fewer than two names, or a repeated name, does too.
+- **On baseline v2** the median picks are Johannesburg (Urban, 3,627 km), AlexanderBay (PeriUrban, 215 km) and SucculentKaroo `-30p88_18p74` (Rural, 188 km). The team chose Cape Town (5,718 km), Savanna `-28p57_29p82` (1,153 km) and the same SucculentKaroo instead. With those, each annotator owns 20 zones and cleans 22 copies and 23,663 to 23,747 km.
 
 ## Why it's like this
 
