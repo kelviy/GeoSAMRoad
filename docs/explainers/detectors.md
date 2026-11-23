@@ -2,11 +2,11 @@
 
 How `sentinel2data.cli detect` runs the detectors over packaged zones and writes their flags into each zone GeoPackage.
 
-> **Status, 2026-11-23.** KEL-48 built the runner and the first detector, `stub`. KEL-49 made re-runs idempotent. KEL-50 added `duplicate` and `crossing`, which flag only. KEL-51 added `overture`, the second-source detector. The gap detector comes later, as does the review queue. [zone-cleaning.md](zone-cleaning.md) describes the zone package itself.
+> **Status, 2026-11-23.** KEL-48 built the runner and the first detector, `stub`. KEL-49 made re-runs idempotent. KEL-50 added `duplicate` and `crossing`, which flag only. KEL-51 added `overture`, the second-source detector. KEL-53 added `gap`, the first detector that writes proposals. Accepting and rejecting a proposal is KEL-56. [zone-cleaning.md](zone-cleaning.md) describes the zone package itself, and [review-queue.md](review-queue.md) the review core.
 
 ## Core idea
 
-A detector is a model-agnostic check that reads only the zone GeoPackage and one config file, and places flags at suspected defects. The second-source detector also reads the Overture road layer that the config names. `detect` runs every enabled detector on each zone and writes the flags into the zone's `flags` layer with `decision = pending`, for an annotator to decide on. Detectors place flags only inside or touching `kept` tiles, and they ignore road ends that dangle only because the zone edge cut the road. Re-running `detect` never loses work. Decided flags never change, and a re-run only adds or removes pending flags. Each run is recorded in the GeoPackage with the full config it used.
+A detector is a model-agnostic check that reads only the zone GeoPackage and one config file, and places flags at suspected defects. The second-source detector also reads the Overture road layer that the config names. `detect` runs every enabled detector on each zone and writes the flags into the zone's `flags` layer with `decision = pending`, for an annotator to decide on. The gap detector also proposes a fix. It writes a connector line into `labels` as a `status = proposed` row, and its flag points at that row. Detectors place flags only inside or touching `kept` tiles, and they ignore road ends that dangle only because the zone edge cut the road. Re-running `detect` never loses work. Decided flags never change, and a re-run only adds or removes pending flags. Each run is recorded in the GeoPackage with the full config it used.
 
 ## How it works
 
@@ -14,8 +14,8 @@ A detector is a model-agnostic check that reads only the zone GeoPackage and one
 2. **Pick the zones.** `find_packaged_zones` lists every `<zone>/<zone>.gpkg` under `--zones-dir`. `--zone` picks some of them. An unknown name stops the command.
 3. **Check the zone.** `detect_zone` refuses a zone that has a `-wal` file, because QGIS has it open. It also refuses a zone packaged before KEL-47: the `flags` fields must match `FLAG_FIELDS`, and the `detector_runs` layer must exist. A refused zone is skipped, the other zones still run, and the command exits with code 1 at the end.
 4. **Read the zone.** `load_zone` builds a `Zone`. Its roads are the label rows with status `kept`, `modified` or `added`, one 2D LineString each. It also holds the union of the `kept` tiles and the zone outline, which is the bounding box of the tile grid.
-5. **Run the detectors.** Each enabled detector in `DETECTORS` returns its flags: `flag_key`, `type`, `source`, `raw_ids` and a geometry. The runner adds `detector`, `decision = pending` and empty `proposal_fid` and `annotator`.
-6. **Merge the flags.** `_merge_flags` matches this run's flags against the stored ones by `flag_key`, as the next section describes.
+5. **Run the detectors.** Each enabled detector in `DETECTORS` returns its flags: `flag_key`, `type`, `source`, `raw_ids` and a geometry. `gap` also returns each flag's connector in a `proposal` column. The runner adds `detector`, `decision = pending` and empty `proposal_fid` and `annotator`.
+6. **Merge the flags.** `_merge_flags` matches this run's flags against the stored ones by `flag_key`, as the next section describes. It writes each new flag's connector into `labels` first, then the flag with `proposal_fid` set to the new row's fid.
 7. **Record the run.** `_record_run` appends a row to `detector_runs`: `run_at` in UTC and the config as JSON.
 8. **Report.** The CLI prints the flag count per type for each zone, then a line of totals, for example `All zones: crossing 1, duplicate 1, stub 1`.
 
@@ -23,12 +23,12 @@ A detector is a model-agnostic check that reads only the zone GeoPackage and one
 
 A re-run merges what the detectors find into the `flags` layer, matching by `flag_key`:
 
-- **A decided flag never changes and is never removed.** This holds even when the new config would no longer place the flag. Here a decided flag is any flag that is not pending detector output. Its `decision` is not `pending`, or it has an `annotator`. QGIS stamps `annotator` on every save.
-- **A pending flag found again stays as it is,** fid included.
-- **A pending flag not found again is deleted.** So is a pending flag that shares its key with a decided flag, or with a pending flag that has a lower fid. The merge never writes such a pair, but older data or a manual edit could.
+- **A decided flag never changes and is never removed.** This holds even when the new config would no longer place the flag. Here a decided flag is any flag that is not pending detector output. Its `decision` is not `pending`, or it has an `annotator`. QGIS stamps `annotator` on every save. A proposal also counts as decided once its `proposed` row has an `annotator`, has another status, or is gone.
+- **A pending flag found again stays as it is,** fid included, along with its `proposed` row. If this run's connector differs from the stored row, the flag counts as not found again and is replaced.
+- **A pending flag not found again is deleted, with its `proposed` row.** So is a pending flag that shares its key with a decided flag, or with a pending flag that has a lower fid. The merge never writes such a pair, but older data or a manual edit could. The row is deleted only while it is still `proposed` with no `annotator`.
 - **A new flag is added as pending,** unless a stored flag, decided or not, already has its key.
 
-So running twice with the same config leaves the layer as it was. Tightening a threshold deletes only the pending flags it no longer finds. Loosening it only adds flags. Only the run's enabled detectors take part, so a disabled detector's pending flags stay. The team lead can tune thresholds mid-cleaning and re-run every zone.
+So a re-run never leaves an orphan `proposed` row, and running twice with the same config leaves the `flags` and `labels` layers as they were. Tightening a threshold deletes only the pending flags it no longer finds. Loosening it only adds flags. Only the run's enabled detectors take part, so a disabled detector's pending flags stay. The team lead can tune thresholds mid-cleaning and re-run every zone.
 
 **The flag key** is `<detector>:<type>:<raw_ids>@<x>,<y>`, built by `flag_key`. For example, `stub:stub:124@533909,6359666`. `raw_ids` is the flag's sorted `raw_ids` field, empty when the flag has none, and `x,y` is the flag point rounded to the metre. The key leaves out fid and run order, so it depends only on the roads and the defect:
 
@@ -36,6 +36,19 @@ So running twice with the same config leaves the layer as it was. Tightening a t
 - **A matched flag needs no update.** Type, `raw_ids` and the rounded location are all in the key, and `source` and `detector` are fixed per detector. A flag found again can differ from the stored one only in position, within the same 1 m cell, so the runner leaves it alone.
 - **A stub whose branch changed gets a fresh flag.** If an annotator deletes a row of the branch, the dead end can stay put while `raw_ids` shrinks. The key changes, so the runner deletes the old pending flag and adds a new one with the current `raw_ids`.
 - **It only needs to hold within one package.** `raw_id` renumbers when a zone is repackaged. But repackaging drops pending flags and refuses zones with decided ones, so no key has to survive it.
+
+## The gap detector
+
+A gap is a dangling road end within `gap.max_distance_m` of another road, 30 m by default. The flag is a point at the dangling end, and it proposes a connector from that end to the other road.
+
+- **Dangling end.** A row end with no other row within `connect_tolerance_m`. `dead_ends` checks rows here, not branches, so the end where two rows of one road meet is not dangling.
+- **Edge-cut ends and scope.** An end within `zone_edge_tolerance_m` of the zone outline is skipped, because the road goes on outside the zone. The end must lie inside or touch a `kept` tile. The road it connects to may lie anywhere.
+- **The other road.** One STRtree `dwithin` query finds the rows within the distance of each dangling end. A row of the end's own branch doesn't count, and nor does a row of any branch touching it. So a stub gets no connector back onto the road it hangs off, and the short last row of a dead-end road gets none onto its own first row. Of the rows left, the nearest wins, and on a tie the one stored first.
+- **Snapping.** The connector runs from the dangling end to the nearest point of that row. If one of that row's own ends lies within `gap.snap_to_end_m` of that point, 5 m by default, it runs to that end instead. The connector starts exactly at the dangling end. A connector that ends on a row end ends exactly on a vertex. One that ends mid-segment ends on the line only to floating-point precision. The largest error on the 60 zones is 5e-10 m.
+- **One flag per gap.** Two dangling ends facing each other would each propose a connector. Two ends close one gap when each connector runs to the other end's road and the ends lie within `gap.max_distance_m` of each other. Only one of the two gets a flag. A connector that ends on a row end wins, because it ends on a vertex. Otherwise the end with the lower x, then y, wins. The distance check keeps the two ends of a long road pair apart. The west ends of two parallel carriageways close one gap, and their east ends close another.
+- **The proposal.** A `labels` row with `status = proposed`, `defect = gap`, `road_class = Other Road`, the first of `ADDED_ROAD_CLASSES`, and that class's `scale_class` and `buffer`. It has no `raw_id` and no `annotator`. The connector is a straight 2D line of two points. The labels layer's Z is optional, so 2D lines are valid in it.
+- **Flag key and `raw_ids`.** `gap:gap:<raw_ids>@<x>,<y>` from the dangling end. `raw_ids` are the `raw_id` values of the end's row and the row it connects to.
+- **`source`.** `labels`.
 
 ## The stub detector
 
@@ -93,7 +106,8 @@ An unnoded crossing is a point where two roads cross and the point is not a vert
 - **`detector_runs` records every run,** even one with every detector disabled.
 - **The counts are what the detectors found this run.** A found flag that matches a stored flag, or another found flag, is counted but not written again.
 - **The edge-cut rule is for stubs only.** A road the zone edge cut is still a real duplicate or a real crossing inside the zone, so `duplicate` and `crossing` don't skip it. `overture` measures only the part of a stretch inside the kept tiles, so the cut doesn't matter to it.
-- **`deleted` and `proposed` rows are not roads.** A pending gap connector does not connect anything for the stub detector.
+- **`deleted` and `proposed` rows are not roads.** A pending gap connector connects nothing for any detector, so the gap it closes is found again on the next run.
+- **Proposal fids come from the GeoPackage.** `_write_proposals` appends the rows and reads back every labels fid above the largest one before. GDAL creates the fid column with `AUTOINCREMENT`, so new fids are always above every older one. If writing the proposals or the flags fails, every labels row above that fid is deleted again. `detect` refuses a zone that QGIS has open, so no one else writes rows meanwhile.
 - **Multi-part label geometries are split** into one road per part, all with the same labels fid.
 - **Flags are 2D.** Labels from a real zone are `LineString Z`. `load_zone` drops the Z, so every flag point is 2D.
 - **Deleting pending flags uses plain SQLite.** The GeoPackage delete triggers are plain SQL, so the R-tree and feature count stay right. Inserts go through GDAL, because the insert triggers call GDAL's `ST_*` functions. The merge never updates a row, so it needs no GDAL update path. Any `UPDATE` on the layer compiles triggers that name `ST_*` functions.
@@ -104,6 +118,8 @@ An unnoded crossing is a point where two roads cross and the point is not a vert
 - **One config, recorded per run.** KEL-11 user story 14: tune without code changes, and know which settings produced each flag.
 - **Kept tiles only, and no edge-cut ends.** KEL-11 user stories 7 and 6: flags never point where annotators are told not to edit, and clipping artefacts don't flood the queue. The check is on the flag point, not only the road, because a road that touches a kept tile can have its dead end in a dropped one.
 - **Vectorised STRtree queries.** The KEL-11 dry run found that per-segment loops with geometry unions don't finish on dense urban zones. With these queries, `detect` with all three detectors runs all 60 zones in 57 s. It places 1,532 stubs, 254 duplicates and 119 crossings. The densest zone, CapeTown_Fynbos_-33p96_18p61_Urban, takes 10 s.
+- **Gaps are proposals.** KEL-11 user stories 1 and 2 ask that closing a gap take one keystroke, and that accepting the connector reconnect the graph. So the connector snaps exactly to the other road, and to that road's end when the end is near.
+- **Not the own road, nor a touching one.** Without this rule, the 60 zones give 39,031 gap flags at the default distance. Most of them point from a short dead end back onto the road it hangs off. With it they give 2,989, and the one-flag-per-gap rule brings that to 2,735. The KEL-11 dry run counted 5,407 gaps. Its notes say only "dangling ends with another segment within 30 m", so whether it counted both ends of a gap is unknown. `gap` alone runs all 60 zones in 24 s. The median zone has 33 gaps for Urban, 7 for PeriUrban and 0.5 for Rural. The dry run's median for Urban was about 74.
 - **Duplicates and crossings are flag only.** KEL-11 user stories 4 and 5. Parallel carriageways and bridges have the same geometry as these defects, so an annotator decides.
 - **Shared vertices, not `crosses` alone.** The KEL-11 dry run counted 1,496 crossings over the 60 zones. That was every `crosses` pair. Of the 1,381 crossing points inside kept tiles, 1,262 are vertices of both roads: roads stored as one row through a junction. Only the other 119 are unnoded.
 - **Overture flags carry only an area.** Overture is ODbL, and copying its geometry would make ROSA a derivative database. KEL-5 and KEL-51 record this. A bounding box grown and rounded outwards marks where to look without reproducing the road. Area flags must be single-part polygons, because that is what the QGIS project's polygon flag layer holds.
@@ -120,9 +136,16 @@ An unnoded crossing is a point where two roads cross and the point is not a vert
 - **The zone outline is a box.** Observed. It is the tile grid's bounding box, which equals the zone COG bounds. Suspected: if a zone's valid data is not rectangular, for example a NaN-padded edge, roads would end at the data edge, not at the box, and the detector would flag those ends as dead ends.
 - **A near-miss join splits a branch.** Suspected. Two rows whose ends are 0.3 m apart count as connected for `dead_ends`, but `line_merge` does not join them. A long road stored that way is checked row by row, so its short last row can still be flagged.
 - **A loop counts as dead at both ends.** Observed. A closed road whose start equals its end touches only itself. If it is shorter than the threshold, it gets a stub flag.
-- **The connect tolerance is very tight.** Suspected. 0.5 m treats a road that stops 1 m short of another as a dead end. That is right for a stub but means near-misses show up as stubs until the gap detector exists.
+- **The connect tolerance is very tight.** Suspected. 0.5 m treats a road that stops 1 m short of another as a dead end. That is right for a stub. Such a near-miss now also gets a gap connector, so a short one shows up as both a stub and a gap.
 - **A key-format change gives decided flags a pending twin.** Suspected. A decided flag keeps the key it was placed with. If a detector's key format changes, as it did for `stub` in KEL-49, the next run adds a pending twin next to each decided flag. When the stub key changed, the real zone packages had no `flag_key` field yet, so no decided flag uses the old format.
-- **Removing a pending proposal does not remove its `proposed` row.** Observed. No detector writes proposals yet. The gap detector must delete the row with its flag.
+- **A mid-segment connector does not join the road graph yet.** Observed. `native_adjacency` in `generator/artifacts.py` builds the road graph for `generate`, and it joins lines only at shared vertices. A connector that ends mid-segment touches the other road, but the road has no vertex there. On the 60 zones that is 2,113 of 2,734 connectors. Accepting one, which is KEL-56, must also add the connector's end as a vertex of the other road, which makes that road `modified`.
+- **Parallel carriageways get connectors at their ends.** Observed. The synthetic carriageways are 20 m apart and dangle at both ends, so each pair of ends gets a connector, which the annotator rejects. Suspected: real carriageways end at junctions, so few of them dangle. This was not counted on the 60 zones.
+- **A connector can cross another road.** Suspected. The detector picks the nearest row and does not check what lies between. A connector that crosses a third road would add an unnoded crossing.
+- **One flag per gap handles only a pair of ends.** Suspected. Three or more dangling ends close together can still give two connectors for what is one gap.
+- **The counts differ by one.** Observed. On the 60 zones `detect` reports 2,735 gaps but writes 2,734 flags, because two found flags shared a key.
+- **Near-duplicate rows can give tiny connectors.** Suspected. Two copies of a road whose ends are 0.5 to 30 m apart and that never come within 0.5 m of each other are separate branches. Each copy's end then gets a connector to the other copy. The synthetic near duplicate comes within 0.5 m at one end, so it gets none.
+- **A proposal deleted by hand keeps its flag forever.** Observed, by design, and tested. If someone deletes the `proposed` row in QGIS, the flag stays pending with its `proposal_fid` pointing at nothing. The runner never replaces it, because it is no longer plain detector output.
+- **`snap_to_end_m` is a guess.** Suspected. 5 m was not tuned on the real zones. Of the 2,734 connectors, 621 end on a vertex of the other road.
 - **A duplicate flag sits on the middle of the row, not the overlap.** Suspected. A row that is 80% covered can have its uncovered 20% in the middle, and then the flag lies a little off the second road.
 - **Short duplicates are missed.** By design. An exact copy of a row shorter than 20 m gets no flag.
 - **Carriageways farther apart than 10 m are not flagged.** Observed. The synthetic `parallel_carriageways` pair is 20 m apart and gets a flag only with a wider distance. The test uses 25 m. Suspected: real dual carriageways wider than 10 m are not flagged at the default either. Their spacing on the 60 zones was not measured.
@@ -138,13 +161,15 @@ An unnoded crossing is a point where two roads cross and the point is not a vert
 - `src/sentinel2data/configs/detectors.yaml`: the default thresholds and toggles.
 - `cleaning/detectors.py`, `DetectorConfig`: the config schema and its strict YAML parser.
 - `cleaning/detectors.py`, `Zone`, `DETECTORS`: what a detector sees, and the name-to-detector registry. The registry key must match a `DetectorConfig` field.
+- `cleaning/detectors.py`, `gap_flags`: the gap detector. `_branch_of_rows` maps rows to branches and `_one_flag_per_gap` drops the second end of a gap.
 - `cleaning/detectors.py`, `branches`, `dead_ends` and `stub_flags`: the stub detector.
 - `cleaning/detectors.py`, `duplicate_flags` and `crossing_flags`: the flag-only detectors. `_flags_from_labels` builds the flag rows for all three.
 - `cleaning/detectors.py`, `overture_flags`: the second-source detector. `_read_overture`, `_sample`, `_unmatched_stretches` and `_flag_area` do the read, sampling, grouping and area.
 - `cleaning/detectors.py`, `flag_key`: builds a flag key. Every detector uses it.
 - `cleaning/contract.py`, `is_pending_detector_output`: the rule that the runner and the packager share.
 - `cleaning/detect.py`, `detect_zone`: runs one zone, with the open-file and schema checks.
-- `cleaning/detect.py`, `load_zone`, `_as_flag_rows`, `_merge_flags` and `_record_run`: GeoPackage reads and writes. `_as_flag_rows` sets `decision = pending`; `_merge_flags` applies the re-run rule.
+- `cleaning/detect.py`, `load_zone`, `_as_flag_rows`, `_merge_flags` and `_record_run`: GeoPackage reads and writes. `_as_flag_rows` sets `decision = pending`; `_merge_flags` applies the re-run rule. `_read_proposals` and `_write_proposals` read and write the `proposed` rows.
 - `tests/sentinel2data/test_detect.py`: end-to-end tests of the runner and `stub` on the packaged synthetic zone.
 - `tests/sentinel2data/test_geometry_detectors.py`: end-to-end tests of `duplicate` and `crossing`.
+- `tests/sentinel2data/test_detect_gap.py`: end-to-end tests of `gap` and its proposals.
 - `tests/sentinel2data/test_detect_overture.py`: end-to-end tests of `overture`, each with an Overture layer written by `synthetic_zone.write_overture`.

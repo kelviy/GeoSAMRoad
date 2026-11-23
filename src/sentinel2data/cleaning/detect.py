@@ -3,8 +3,9 @@ its flags back into it.
 
 A run merges its flags into the ones already there by ``flag_key``: decided
 flags never change, pending flags found again stay put, pending flags not found
-again go, and new flags are added as pending. Each run is recorded with its
-full config in ``detector_runs``.
+again go, and new flags are added as pending. A proposal's ``proposed`` label
+row is written and removed with its flag. Each run is recorded with its full
+config in ``detector_runs``.
 """
 
 import json
@@ -20,11 +21,14 @@ import pyogrio
 import shapely
 
 from sentinel2data.cleaning.contract import (
+    ADDED_ROAD_CLASSES,
     DETECTOR_RUNS_LAYER,
     FLAG_FIELDS,
     FLAGS_LAYER,
     LABELS_LAYER,
     PENDING,
+    ROAD_BUFFER,
+    ROAD_SCALE,
     ROAD_STATUSES,
     TILES_LAYER,
     is_pending_detector_output,
@@ -92,8 +96,17 @@ def detect_zone(gpkg, config: DetectorConfig) -> Counter:
     names = [name for name in DETECTORS if getattr(config, name).enabled]
     found = [DETECTORS[name](zone, config).assign(detector=name) for name in names]
     if found:
-        flags = _as_flag_rows(pd.concat(found, ignore_index=True), zone.roads.crs)
-        _merge_flags(gpkg, flags, names)
+        everything = pd.concat(found, ignore_index=True)
+        flags = _as_flag_rows(everything, zone.roads.crs)
+        proposals = [
+            p if isinstance(p, shapely.Geometry) else None
+            for p in (
+                everything["proposal"]
+                if "proposal" in everything
+                else [None] * len(everything)
+            )
+        ]
+        _merge_flags(gpkg, flags, proposals, names)
     _record_run(gpkg, config)
     return Counter(t for flags in found for t in flags["type"])
 
@@ -113,33 +126,155 @@ def _as_flag_rows(found: pd.DataFrame, crs) -> gpd.GeoDataFrame:
     )
 
 
-def _merge_flags(gpkg, found: gpd.GeoDataFrame, detectors):
+def _merge_flags(
+    gpkg, found: gpd.GeoDataFrame, proposals: list[shapely.Geometry | None], detectors
+):
     """Merge this run's ``found`` flags into the flags layer, matching by ``flag_key``.
 
-    Only pending detector output from ``detectors`` is replaceable. A
-    replaceable flag found again stays as it is, fid included; one not found
-    again is deleted. A found flag whose key no flag has yet is appended as
-    pending. Every other flag, decided or saved by someone, is never touched.
+    ``proposals`` holds each found flag's proposed label geometry, or None.
+
+    Only pending detector output from ``detectors`` is replaceable: a pending
+    flag no one saved, whose ``proposed`` row, if it has one, no one saved
+    either. A replaceable flag found again with the same proposal stays as it
+    is, fid included; any other replaceable flag is deleted with its
+    ``proposed`` row. A found flag whose key no remaining flag has is appended
+    as pending, after its proposal is written to labels. Every other flag,
+    decided or saved by someone, is never touched.
     """
     existing = pyogrio.read_dataframe(
         gpkg, layer=FLAGS_LAYER, read_geometry=False, fid_as_index=True
     )
-    replaceable = existing["detector"].isin(detectors) & is_pending_detector_output(
-        existing
+    stored_proposals = _read_proposals(gpkg, existing["proposal_fid"])
+    proposal_untouched = existing["proposal_fid"].isna() | existing[
+        "proposal_fid"
+    ].isin(stored_proposals.index)
+    replaceable = (
+        existing["detector"].isin(detectors)
+        & is_pending_detector_output(existing)
+        & proposal_untouched
     )
     stored_keys, found_keys = existing["flag_key"], found["flag_key"]
     # A replaceable flag also goes when a kept flag already has its key.
     taken = stored_keys.isin(stored_keys[~replaceable])
     repeat = stored_keys.where(replaceable).duplicated() & replaceable
-    stale = replaceable & (~stored_keys.isin(found_keys) | taken | repeat)
+    # Of found flags sharing a key, only the first is ever written.
+    found_proposal = {}
+    for key, proposal in zip(found_keys, proposals):
+        found_proposal.setdefault(key, proposal)
+    changed = pd.Series(
+        [
+            key in found_proposal
+            and not _same_proposal(stored_proposals.get(fid), found_proposal[key])
+            for key, fid in zip(stored_keys, existing["proposal_fid"])
+        ],
+        index=existing.index,
+        dtype=bool,
+    )
+    stale = replaceable & (~stored_keys.isin(found_keys) | taken | repeat | changed)
     with closing(sqlite3.connect(gpkg)) as con, con:
         con.executemany(
             f'DELETE FROM "{FLAGS_LAYER}" WHERE fid = ?',
             [(int(fid),) for fid in existing.index[stale]],
         )
-    new = found[~found_keys.isin(stored_keys[~stale]) & ~found_keys.duplicated()]
-    if len(new):
+        con.executemany(
+            f'DELETE FROM "{LABELS_LAYER}" WHERE fid = ? '
+            "AND status = 'proposed' AND annotator IS NULL",
+            [(int(fid),) for fid in existing.loc[stale, "proposal_fid"].dropna()],
+        )
+    is_new = ~found_keys.isin(stored_keys[~stale]) & ~found_keys.duplicated()
+    new = found[is_new].copy()
+    if not len(new):
+        return
+    new_proposals = [p for p, n in zip(proposals, is_new) if n]
+    with_proposal = [p is not None for p in new_proposals]
+    last = _last_label_fid(gpkg)
+    try:
+        fids = _write_proposals(
+            gpkg, [p for p in new_proposals if p is not None], found.crs, after=last
+        )
+        new.loc[with_proposal, "proposal_fid"] = fids
         pyogrio.write_dataframe(new, gpkg, layer=FLAGS_LAYER, append=True)
+    except Exception:
+        # Every labels row after ``last`` is one this run wrote.
+        with closing(sqlite3.connect(gpkg)) as con, con:
+            con.execute(f'DELETE FROM "{LABELS_LAYER}" WHERE fid > ?', (last,))
+        raise
+
+
+def _read_proposals(gpkg, proposal_fids) -> gpd.GeoSeries:
+    """The 2D geometry of each ``proposed`` label row no one saved, by fid,
+    among ``proposal_fids``. A fid whose row is gone is left out."""
+    fids = sorted({int(f) for f in proposal_fids.dropna()})
+    if not fids:
+        return gpd.GeoSeries([], dtype=object)
+    with closing(sqlite3.connect(gpkg)) as con:
+        untouched = [
+            fid
+            for (fid,) in con.execute(
+                f"SELECT fid FROM \"{LABELS_LAYER}\" WHERE status = 'proposed' "
+                f"AND annotator IS NULL AND fid IN ({', '.join('?' * len(fids))})",
+                fids,
+            )
+        ]
+    if not untouched:
+        return gpd.GeoSeries([], dtype=object)
+    rows = pyogrio.read_dataframe(
+        gpkg, layer=LABELS_LAYER, fids=untouched, columns=[], fid_as_index=True
+    )
+    return gpd.GeoSeries(shapely.force_2d(rows.geometry.values), index=rows.index)
+
+
+def _same_proposal(stored, found) -> bool:
+    if stored is None or found is None:
+        return stored is None and found is None
+    return bool(shapely.equals_exact(stored, found, tolerance=0))
+
+
+def _last_label_fid(gpkg) -> int:
+    with closing(sqlite3.connect(gpkg)) as con:
+        (last,) = con.execute(
+            f'SELECT coalesce(max(fid), 0) FROM "{LABELS_LAYER}"'
+        ).fetchone()
+    return int(last)
+
+
+def _write_proposals(gpkg, geometries, crs, after) -> list[int]:
+    """Append ``geometries`` to labels as ``proposed`` gap connectors and return
+    their fids, in order. ``after`` is the largest labels fid before the write.
+
+    A connector is a road an annotator would add, so it takes the default added
+    road class. It has no ``raw_id`` and no ``annotator``.
+    """
+    if not geometries:
+        return []
+    road_class = ADDED_ROAD_CLASSES[0]
+    values = {
+        "status": "proposed",
+        "defect": "gap",
+        "road_class": road_class,
+        "scale_class": ROAD_SCALE[road_class],
+        "buffer": ROAD_BUFFER[road_class],
+    }
+    fields = pyogrio.read_info(gpkg, layer=LABELS_LAYER)["fields"]
+    rows = gpd.GeoDataFrame(
+        {f: [values[f]] * len(geometries) for f in fields if f in values},
+        geometry=gpd.GeoSeries(geometries, crs=crs),
+    )
+    pyogrio.write_dataframe(rows, gpkg, layer=LABELS_LAYER, append=True)
+    # GeoPackage fids only grow, so the new rows are the ones after ``after``.
+    with closing(sqlite3.connect(gpkg)) as con:
+        fids = [
+            fid
+            for (fid,) in con.execute(
+                f'SELECT fid FROM "{LABELS_LAYER}" WHERE fid > ? ORDER BY fid', (after,)
+            )
+        ]
+    if len(fids) != len(geometries):
+        raise RuntimeError(
+            f"{gpkg}: wrote {len(geometries)} proposals but found {len(fids)} new "
+            "labels rows"
+        )
+    return fids
 
 
 def _record_run(gpkg, config: DetectorConfig):

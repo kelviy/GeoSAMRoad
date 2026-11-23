@@ -74,7 +74,7 @@ Cleaning happens per zone, not per tile. For each zone, the packager writes one 
 
 ## How detectors fit in
 
-`detect` reads the zone GeoPackage and writes pending rows into `flags`, and records each run in `detector_runs`. [detectors.md](detectors.md) explains it. A zone whose only changes are `detect` output repackages without `--overwrite`, and a test checks this. A proposal will be a flag whose `proposal_fid` points at a `status = proposed` row in `labels`. The QGIS project already styles `proposed` as a dashed magenta line, but no detector writes proposals yet. `detect` refuses a zone packaged before KEL-47, so zones packaged earlier, such as `~/Documents/ROSAZones_v2`, need repackaging first. The written cleaning spec that annotators follow is KEL-7, in the backlog.
+`detect` reads the zone GeoPackage and writes pending rows into `flags`, and records each run in `detector_runs`. [detectors.md](detectors.md) explains it. A zone whose only changes are `detect` output repackages without `--overwrite`, and a test checks this. A proposal is a flag whose `proposal_fid` points at a `status = proposed` row in `labels`. The gap detector writes them, and the QGIS project styles `proposed` as a dashed magenta line. `detect` refuses a zone packaged before KEL-47, so zones packaged earlier, such as `~/Documents/ROSAZones_v2`, need repackaging first. The written cleaning spec that annotators follow is KEL-7, in the backlog.
 
 ## Weak spots and ideas
 

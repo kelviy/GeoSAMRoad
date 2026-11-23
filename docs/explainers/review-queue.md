@@ -37,7 +37,7 @@ The review queue is every flag in the zone, then every kept tile, each swept acr
 
 ## Why it's like this
 
-- **Flags, then kept tiles, each in spatial order.** KEL-11 user story 27. Proposals are meant to come first. None exist yet, so they will need their own place in the order when KEL-56 lands.
+- **Flags, then kept tiles, each in spatial order.** KEL-11 user story 27. Proposals are meant to come first. Since KEL-53 the gap detector writes them, but until KEL-56 they are queued as ordinary flags.
 - **One key per decision, and `real` applies the deletion.** KEL-11 user stories 22 and 23.
 - **No separate app state.** KEL-11 user story 31: a crash must lose nothing. That is why every call reopens the file and nothing is cached between calls.
 - **The annotator on every write.** KEL-11 user story 30, for the agreement study.
@@ -47,6 +47,7 @@ The review queue is every flag in the zone, then every kept tile, each swept acr
 
 ## Weak spots and ideas
 
+- **A gap flag decided here leaves its connector `proposed`.** Observed. `decide_flag` records `real`, `not_defect` or `needs_qgis` on a gap flag like any other flag and does not touch its `proposed` row. Accepting or rejecting the connector is KEL-56. Until then a decided gap flag's row stays `proposed`, and the packager counts it as cleaning work.
 - **Deleting by `raw_id` also catches split pieces.** Suspected. QGIS copies `raw_id` to both pieces of a split road. `real` on a stub then deletes every road row with that `raw_id`, including a long piece far from the stub. The `phantom?` coverage check guards against this, but the stub rule does not.
 - **Partial deletion can go unnoticed.** Observed in a test. A `phantom?` flag over the end of a long road deletes the rows inside it, records `real`, and leaves the rest. The caller only learns which rows were deleted, not which named rows stayed.
 - **Added rows are never deleted.** By design: they have no `raw_id`, so no flag names them.

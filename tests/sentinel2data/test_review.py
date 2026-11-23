@@ -231,7 +231,7 @@ def test_a_decided_flag_is_not_decided_again(zone):
         review.decide_flag(zone, fid, "real", annotator="Sipho")
     stored = read(zone, "flags").loc[fid]
     assert (stored["decision"], stored["annotator"]) == ("not_defect", "Thandi")
-    assert (read(zone, "labels")["status"] == "kept").all()
+    assert not (read(zone, "labels")["status"] == "deleted").any()
 
 
 @pytest.mark.parametrize(

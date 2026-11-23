@@ -10,6 +10,15 @@ connect_tolerance_m: 0.5
 # edge, not a real dead end.
 zone_edge_tolerance_m: 1.0
 
+# Gap: a dangling road end within max_distance_m of another road gets a
+# proposed connector to that road's nearest point, or to the end of that road
+# row when the end lies within snap_to_end_m of the nearest point. The end's
+# own road, and roads touching it, don't count.
+gap:
+  enabled: true
+  max_distance_m: 30.0
+  snap_to_end_m: 5.0
+
 # Dangling stub: a road with a dead end, shorter than max_length_m.
 stub:
   enabled: true

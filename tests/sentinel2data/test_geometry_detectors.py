@@ -95,7 +95,10 @@ def test_a_wider_duplicate_distance_flags_the_carriageways_and_proposes_nothing(
     zones, shared_synthetic_zone, tmp_path
 ):
     roads = shared_synthetic_zone.cases["parallel_carriageways"].geometries
-    config = config_with(tmp_path / "c.yaml", duplicate={"max_distance_m": 25.0})
+    # Gaps off: the carriageway ends get gap connectors, which are not deletions.
+    config = config_with(
+        tmp_path / "c.yaml", duplicate={"max_distance_m": 25.0}, gap={"enabled": False}
+    )
     flags = flags_of_type(zones, "duplicate", config)
 
     carriageways = flags["raw_ids"] == raw_ids_of(zones, roads)
@@ -181,11 +184,17 @@ def test_a_crossing_outside_the_kept_tiles_gets_no_flag(zones):
 # Both
 
 
-def test_the_detectors_never_change_the_labels(zones):
+def test_the_detectors_never_change_the_roads(zones):
+    # They only add ``proposed`` rows, which are not roads.
     before = pyogrio.read_dataframe(gpkg(zones), layer="labels", fid_as_index=True)
     run_detect(zones)
     after = pyogrio.read_dataframe(gpkg(zones), layer="labels", fid_as_index=True)
-    pd.testing.assert_frame_equal(after, before)
+    assert (after["status"] == "proposed").any()
+    # With proposed rows in the layer, pyogrio reads raw_id as float and the
+    # empty columns as strings.
+    pd.testing.assert_frame_equal(
+        after[after["status"] != "proposed"], before.astype(after.dtypes.to_dict())
+    )
 
 
 @pytest.mark.parametrize("detector", ["duplicate", "crossing"])

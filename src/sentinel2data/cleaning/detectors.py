@@ -28,6 +28,13 @@ DEFAULT_CONFIG_PATH = Path(__file__).parents[1] / "configs" / "detectors.yaml"
 
 
 @dataclass(frozen=True)
+class GapConfig:
+    enabled: bool
+    max_distance_m: float
+    snap_to_end_m: float
+
+
+@dataclass(frozen=True)
 class StubConfig:
     enabled: bool
     max_length_m: float
@@ -68,6 +75,7 @@ class DetectorConfig:
 
     connect_tolerance_m: float
     zone_edge_tolerance_m: float
+    gap: GapConfig
     stub: StubConfig
     duplicate: DuplicateConfig
     crossing: CrossingConfig
@@ -284,6 +292,113 @@ def crossing_flags(zone: Zone, config: DetectorConfig) -> gpd.GeoDataFrame:
     )
 
 
+def gap_flags(zone: Zone, config: DetectorConfig) -> gpd.GeoDataFrame:
+    """A ``gap`` flag at each dangling road end within ``gap.max_distance_m`` of
+    another road, proposing a connector to that road.
+
+    A dangling end touches no other row. Ends on the zone boundary and ends
+    outside the kept tiles are skipped. The end's own branch and every branch
+    touching it don't count as another road, so a stub never gets a connector
+    back onto the road it hangs off. The connector runs from the end to the
+    nearest point of the nearest road row, or to that row's end when the end
+    lies within ``gap.snap_to_end_m`` of the nearest point. Two dangling ends
+    within the distance of each other whose connectors run to each other's
+    roads close one gap, and only one of them gets a flag.
+
+    The flags carry their connector in a ``proposal`` column.
+    """
+    cfg = config.gap
+    geoms = np.asarray(zone.roads.geometry.values)
+    n = len(geoms)
+    tree = shapely.STRtree(geoms)
+    branch_of = _branch_of_rows(geoms)
+    ra, rb = tree.query(geoms, predicate="dwithin", distance=config.connect_tolerance_m)
+    m = n + 1
+    touching = np.unique(branch_of[ra] * m + branch_of[rb])
+
+    starts, ends = shapely.get_point(geoms, 0), shapely.get_point(geoms, -1)
+    points = np.concatenate([starts, ends])
+    owner = np.tile(np.arange(n), 2)
+    dead = np.concatenate(dead_ends(geoms, config.connect_tolerance_m))
+    dangling = np.flatnonzero(
+        dead
+        & ~zone.on_boundary(points, config.zone_edge_tolerance_m)
+        & zone.in_kept_tiles(points)
+    )
+
+    near, target = tree.query(
+        points[dangling], predicate="dwithin", distance=cfg.max_distance_m
+    )
+    end = dangling[near]
+    other_road = ~np.isin(branch_of[owner[end]] * m + branch_of[target], touching)
+    end, target = end[other_road], target[other_road]
+    # The nearest row per end; ties go to the row stored first.
+    distance = shapely.distance(points[end], geoms[target])
+    order = np.lexsort((target, distance, end))
+    _, first = np.unique(end[order], return_index=True)
+    end, target = end[order[first]], target[order[first]]
+
+    origin = points[end]
+    nearest = shapely.get_point(shapely.shortest_line(origin, geoms[target]), -1)
+    to_start = shapely.distance(nearest, starts[target])
+    to_end = shapely.distance(nearest, ends[target])
+    snap_end = np.where(to_start <= to_end, target, target + n)
+    snapped = np.minimum(to_start, to_end) <= cfg.snap_to_end_m
+    tip = np.where(snapped, points[snap_end], nearest)
+
+    keep = _one_flag_per_gap(
+        branch_of[owner[end]], branch_of[target], origin, snapped, cfg.max_distance_m
+    )
+    end, target, origin, tip = end[keep], target[keep], origin[keep], tip[keep]
+    connectors = [
+        shapely.LineString([a.coords[0], b.coords[0]]) for a, b in zip(origin, tip)
+    ]
+    raw_ids = zone.roads["raw_id"].to_numpy()
+    flags = _flags_from_labels(
+        "gap",
+        origin,
+        [raw_ids[[owner[e], t]] for e, t in zip(end, target)],
+        zone.roads.crs,
+    )
+    flags["proposal"] = pd.Series(connectors, index=flags.index, dtype=object)
+    return flags
+
+
+def _branch_of_rows(geoms):
+    """Per row, the branch it belongs to. A row no branch covers is a branch of
+    its own."""
+    _, members = branches(geoms)
+    branch_of = np.full(len(geoms), -1)
+    for b, rows in enumerate(members):
+        branch_of[rows] = b
+    alone = branch_of == -1
+    branch_of[alone] = len(members) + np.arange(alone.sum())
+    return branch_of
+
+
+def _one_flag_per_gap(road, target_road, origin, snapped, max_distance):
+    """Per candidate connector, whether its dangling end gets a flag.
+
+    Candidate ``i`` runs from ``origin[i]`` on branch ``road[i]`` to branch
+    ``target_road[i]``. Two candidates close one gap when each runs to the
+    other's branch and their dangling ends are within ``max_distance`` of each
+    other. Of such a pair, a connector that ends on a row end wins, then the
+    one starting at the lower x, then y.
+    """
+    by_roads: dict[tuple[int, int], list[int]] = {}
+    for i, pair in enumerate(zip(road, target_road)):
+        by_roads.setdefault((int(pair[0]), int(pair[1])), []).append(i)
+    rank = [(not snapped[i], *origin[i].coords[0]) for i in range(len(origin))]
+    keep = np.ones(len(origin), dtype=bool)
+    for i in range(len(origin)):
+        facing = by_roads.get((int(target_road[i]), int(road[i])), [])
+        for j in facing:
+            close = origin[i].distance(origin[j]) <= max_distance
+            if close and rank[j] < rank[i]:
+                keep[i] = False
+    return keep
+
+
 def _flags_from_labels(flag_type, points, raw_id_groups, crs) -> gpd.GeoDataFrame:
     """Flags of ``flag_type`` from the labels, one per point. The detector has
     the same name as the flag type."""
@@ -463,6 +578,7 @@ Detector = Callable[[Zone, DetectorConfig], gpd.GeoDataFrame]
 # Detector name -> detector. The name is also its config section and the
 # ``detector`` field of its flags.
 DETECTORS: dict[str, Detector] = {
+    "gap": gap_flags,
     "stub": stub_flags,
     "duplicate": duplicate_flags,
     "crossing": crossing_flags,

@@ -126,7 +126,8 @@ def stub_only_config(path, max_length_m):
     this one threshold and count every flag."""
     write_config(path, max_length_m=max_length_m)
     config = yaml.safe_load(path.read_text())
-    config["duplicate"]["enabled"] = config["crossing"]["enabled"] = False
+    for other in ("gap", "duplicate", "crossing"):
+        config[other]["enabled"] = False
     path.write_text(yaml.safe_dump(config))
     return str(path)
 
@@ -191,9 +192,10 @@ def test_detect_runs_every_zone_by_default_and_prints_counts_per_zone_and_type(z
     result = run_detect(zones)
     for zone in ALL_ZONES:
         assert len(read_runs(zones, zone)) == 1
-    assert f"{TRAIN_ZONE}: crossing 1, duplicate 1, stub 1" in result.output
+    # Gaps: the gap case, and each end of the parallel carriageways.
+    assert f"{TRAIN_ZONE}: crossing 1, duplicate 1, gap 3, stub 1" in result.output
     assert f"{VAL_ZONE}: no flags" in result.output
-    assert "All zones: crossing 1, duplicate 1, stub 1" in result.output
+    assert "All zones: crossing 1, duplicate 1, gap 3, stub 1" in result.output
 
 
 def test_zone_selects_the_zones_to_run_on(zones):
