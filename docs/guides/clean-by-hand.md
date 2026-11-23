@@ -1,12 +1,12 @@
 # Clean by hand in QGIS
 
-Keep, modify, add and delete roads in the labels layer, for QGIS beginners.
+Keep, modify, add and delete roads in the labels layer
 
-You edit one layer, **Labels**. Every row in it is a road. Each row has a `status` that says what you did to it, and a `defect` that says why. The packager filled the layer with a copy of the raw labels, all with `status = kept`. Your job is to change only the rows that disagree with the reference imagery, and to set `status` and `defect` on each one you change. The [review queue plugin](review-with-plugin.md) does most of the simple cases with one key. This page covers everything you draw yourself.
+You edit one layer, **Labels**. Every row in it is a road. Each row has a `status` that says what you did to it, and a `defect` that says why. The packager filled the layer with a copy of the raw labels, all with `status = kept`. The job is to change only the rows that disagree with the reference imagery, and to set `status` and `defect` on each one you change. Hopefully, the [review queue plugin](review-with-plugin.md) does most of the simple cases with one key. This page covers everything you draw yourself.
 
 Terms are defined in the [glossary](../glossary.md).
 
-Before you start, finish [Setup](setup.md) and [Claim and download a zone](claim-and-download.md). To open the zone, select **Project > Open** (++ctrl+o++) and choose `<zone>.qgs` in the zone package folder. Open the `.qgs` file, not the `.gpkg` file. The `.qgs` file holds the styles, drop-down lists and rules that this page relies on.
+Before you start, finish [Setup](setup.md) and [File Downloads](claim-and-download.md). To open the zone, select **Project > Open** (++ctrl+o++) and choose `<zone>.qgs` in the zone package folder. Open the `.qgs` file, not the `.gpkg` file. The `.qgs` file holds the styles, drop-down lists and rules that this page relies on.
 
 ## The layers
 

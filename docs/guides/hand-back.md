@@ -22,21 +22,6 @@ If a `-wal` file is still there after QGIS crashed, start QGIS, open `<zone>.qgs
 
 `package-zones` also refuses a zone that has a `-wal` file, so a forgotten `-wal` file blocks kelviy too.
 
-## Upload the zone
+## Assembler
 
-Upload only `<zone>.gpkg`. It holds all your cleaning work: your label edits, your flag decisions and your tile reviews. Kelviy already has the other files of the zone package.
-
-1. Open the shared Drive. Ask kelviy for the link.
-2. Upload `<zones-dir>/<zone>/<zone>.gpkg` to the zone's folder, or to the place kelviy told you.
-
-Upload the file unchanged, exactly as QGIS saved it. Do not rename it, and do not zip it.
-
-!!! note "Screenshot: the shared Drive with a cleaned zone GeoPackage uploaded"
-
-## Mark the zone done
-
-1. Open the shared Sheet. Ask kelviy for the link.
-2. In your row for the zone, set **status** to `done`.
-3. Set **returned date** to the date of the upload.
-
-Kelviy picks up the zone from there. Cleaned zones will be read back by `raw_id` and `status` and turned into tiles again, as [Assemble and retile](assemble-and-retile.md) describes. That step is not built yet.
+The Assembler would use the cleaned zones to be turned into tiles again. As [Assemble and retile](assemble-and-retile.md) describes. That step is not built yet.

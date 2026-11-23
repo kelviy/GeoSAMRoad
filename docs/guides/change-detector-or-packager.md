@@ -2,7 +2,7 @@
 
 Change how zones are flagged or packaged, check the change, and regenerate zone packages without losing cleaning work.
 
-This is the secondary path. kelviy packages the zones and runs the detectors centrally, and most teammates only download a ready zone package. Follow this page only if you want to change a detector or the packager yourself.
+ Follow this page only if you want to change a detector or the packager yourself.
 
 Terms such as zone package, flag key, cleaning work and pending detector output are defined in the [glossary](../glossary.md).
 
@@ -11,7 +11,7 @@ Terms such as zone package, flag key, cleaning work and pending detector output 
 
 ## What you need
 
-You need the full data, not only a zone package. The [Data & files](../guides/data-and-files.md) page lists each file and where to get it. Packaging reads these four inputs:
+You need the full data, not only a zone package. The [Data Description](../guides/data-and-files.md) page lists each file and where to get it. Packaging reads these four inputs:
 
 - The roads parquet that `generate` was run with, for example `<data-dir>/cdngi_dense.parquet`.
 - The pre-split imagery root that `generate` was run with. It holds `train/`, `val/` and `test/`, one zone COG per zone.

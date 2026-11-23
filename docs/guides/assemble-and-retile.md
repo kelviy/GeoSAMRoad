@@ -3,11 +3,11 @@
 How cleaned zones become ROSA tiles again. This step is not built yet.
 
 !!! warning "Not built yet"
-    The assembler and retiler do not exist yet and still have to be implemented (KEL-5, KEL-11). No command on this page can be run today.
+    The assembler and retiler do not exist yet and still have to be implemented (KEL-5, KEL-11).
 
 Terms are defined in the [glossary](../glossary.md).
 
-After you [hand back your zone](hand-back.md), you are done. kelviy collects every cleaned zone GeoPackage. The plan has two steps. The assembler, which is pending, reads the labels layer of every zone and joins the roads into one cleaned road layer. Then the existing `generate` command cuts that layer into tiles again, on the same grid and splits as the baseline. The result is a cleaned ROSA dataset that the models train on as before.
+After the cleaning stage is done [hand back your zone](hand-back.md), we need to combine and retile everything. The plan has two steps. The assembler, which is pending, reads the labels layer of every zone and joins the roads into one cleaned road layer. Then the existing `generate` command cuts that layer into tiles again, on the same grid and splits as the baseline. The result is a cleaned ROSA dataset that the models train on as before.
 
 ```mermaid
 flowchart LR
@@ -42,13 +42,13 @@ Other parts of the zone are read like this:
 - **Proposals.** Accepting a proposal turns its row into `added`, and rejecting it removes the row. A proposal still `proposed` at assembly is a pending decision.
 - **Tiles.** The `reviewed` field shows that someone looked at every kept tile. The assembler uses it to check that the zone is finished. `generate` decides each tile's status again from the cleaned roads.
 
-KEL-5 says the assembler refuses a zone that has unreviewed kept tiles or pending proposals, unless it is forced. What counts as forced, and what a forced run does with those proposals, is not decided yet. Whether a pending flag that is not a proposal, or a `needs_qgis` flag, also refuses the zone is not decided yet.
+The assembler should refuse a zone that has unreviewed kept tiles or pending proposals, unless it is forced. What counts as forced, and what a forced run does with those proposals, is not decided yet. Whether a pending flag that is not a proposal, or a `needs_qgis` flag, also refuses the zone is not decided yet.
 
-For a [shared zone](../explainers/zone-assignment.md), only the owner's copy goes into the dataset. The other copies are kept for the agreement study.
+For a [shared zone](../explainers/zone-assignment.md), only one annotator's copy goes into the dataset. The other copies are kept for the agreement study.
 
 ## How zones become tiles again
 
-Retiling uses no new tiling code. KEL-5 plans to pass the cleaned road layer to `generate` as its roads input, in place of the raw roads parquet. [Dataset tiling](../explainers/dataset-tiling.md) explains how `generate` works. Three of its properties keep the cleaned dataset comparable with the baseline:
+Retiling uses no new tiling code. Ticket KEL-5 plans to pass the cleaned road layer to `generate` as its roads input, in place of the raw roads parquet. [Dataset tiling](../explainers/dataset-tiling.md) explains how `generate` works. Three of its properties keep the cleaned dataset comparable with the baseline:
 
 - **The same grid.** `generate` cuts each zone into 512 px squares from the zone's top-left corner. The zone images do not change, so every tile lands on the same position and keeps the same name.
 - **The same splits.** The split comes from the imagery folder, one split per zone. A cleaned zone stays in its train, val or test split.

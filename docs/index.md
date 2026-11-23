@@ -33,10 +33,10 @@ The blue steps are yours. The dashed steps do not exist yet.
 | Step | Who | Guide |
 | --- | --- | --- |
 | Package zones and run detectors | kelviy, or anyone changing a detector | [Change a detector or the packager](guides/change-detector-or-packager.md) |
-| Claim and download a zone | you | [Claim and download a zone](guides/claim-and-download.md) |
+| Claim and download a zone | you | [File Downloads](guides/claim-and-download.md) |
 | Review flags and proposals | you | [Review with the plugin](guides/review-with-plugin.md) |
 | Fix what is left | you | [Clean by hand in QGIS](guides/clean-by-hand.md) |
 | Upload the cleaned zone | you | [Hand back your zone](guides/hand-back.md) |
 | Assemble and retile | not built yet | [Assemble and retile](guides/assemble-and-retile.md) |
 
-The files each step needs, and where to get them, are on [Data & files](guides/data-and-files.md).
+The files each step needs, and where to get them, are on [Data Description](guides/data-and-files.md).

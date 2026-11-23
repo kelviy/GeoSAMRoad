@@ -62,9 +62,9 @@ nav:
       - guides/claim-and-download.md
       - guides/review-with-plugin.md
       - guides/clean-by-hand.md
+      - guides/change-detector-or-packager.md
       - guides/hand-back.md
       - guides/assemble-and-retile.md
-      - guides/change-detector-or-packager.md
   - How it works:
       - explainers/README.md
       - explainers/overview.md

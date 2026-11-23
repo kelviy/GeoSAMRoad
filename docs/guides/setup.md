@@ -123,4 +123,4 @@ To change it, open **System Settings > Users & Groups**. Control-click your acco
 
 On both systems, restart QGIS after you change the name. QGIS reads it only when it starts.
 
-Next, find the files you need on [Data & files](data-and-files.md), then [claim and download a zone](claim-and-download.md).
+Next, find the files you need on [Data Description](data-and-files.md), then claim and download a zone on [File Downloads](claim-and-download.md).

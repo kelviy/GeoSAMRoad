@@ -4,23 +4,23 @@ Work through a zone's review queue in the docked panel, one key per decision.
 
 Before you start, install the plugin and set your full name, as [Setup](setup.md) describes. Terms such as flag, proposal and kept tile are defined in the [glossary](../glossary.md).
 
-## Why the queue saves you work
+## Plugin and Defect Detectors
 
-You do not scan a zone tile by tile for defects. The detectors already did that. They placed a flag at each suspected defect inside the kept tiles. For gaps, the gap detector also drew the fix, a connector line, so the flag is a proposal. The review queue takes you to each item in turn, and one key decides it:
+The detectors help scan defects. They placed a flag at each suspected defect inside the kept tiles. For gaps, the gap detector also drew the fix, a connector line, so the flag is a proposal. The review queue takes you to each item in turn, and one key decides it:
 
 - **A proposal.** `A` accepts the connector and makes it a road. `X` rejects it and removes it.
-- **A `stub` or `phantom?` flag.** `R` confirms the defect and deletes the roads the flag names. You do not open the attribute form.
+- **A `stub` or `phantom?` flag.** `R` confirms the defect and deletes the roads the flag names.
 - **Any other flag.** `R` or `N` records whether the defect is real.
 - **A kept tile.** `T` marks it reviewed after you have looked over the whole tile.
 
-The queue holds every proposal first, then every other flag, then every kept tile. Each group runs across the zone in tile order, from the northern row down. So proposals, the cheapest decisions, come first. The tile pass at the end catches what the detectors missed.
+The plugin also can filter based on the kind and type of label. This allows for concurrent semi-automated workflow in QGIS.
 
-Every decision goes straight into the zone GeoPackage with your name. If QGIS crashes, you lose nothing, and the next time you open the zone the queue resumes where you stopped.
+Every decision recorded on plugin is recorded into the zone GeoPackage and tagged with an annotator. Just make sure to save in order to not lose work, in the case of a crash. Hopefully, the plugin will do the heavy lifting on the actual road label editing.
 
 ## Open the queue
 
 1. Open the zone's `<zone>.qgs` in QGIS.
-2. The **ROSA review queue** panel docks on the right. It goes to the item you were on when you stopped. If that item is no longer in the queue, it goes to the first item that is not done.
+2. The **ROSA review queue** panel docks on the right.
 3. Click inside the panel so that it has focus. The keys work only while the panel has focus.
 
 If you closed the panel, select **Plugins > ROSA review queue > Review queue panel** to show it again. When the panel is closed as you open a zone, the map keeps the project's saved view.
@@ -38,6 +38,26 @@ The panel shows, from top to bottom:
 For each item, the map zooms to it and selects it. A flag gets a 50 m margin on every side. A tile fills the view. A selected area flag or tile is drawn as a yellow outline with no fill, so you can see the imagery inside it.
 
 !!! note "Screenshot: QGIS with a zone project open and the review queue panel docked on the right"
+
+
+## Filters and display
+
+The three filters narrow the queue. Their values come from the zone.
+
+- **Kind:** `proposal`, `flag` or `tile`. Kind `flag` means flags that are not proposals.
+- **Flag type:** one of `gap`, `stub`, `duplicate`, `crossing`, `missing?` and `phantom?`.
+- **Source:** `labels` or `overture`.
+
+The filtered queue keeps the usual order. A flag type or a source filter leaves out every tile. To see the whole queue again, set each filter back to its "Any" value.
+
+Below the filters, the panel lists any hidden detectors. The team lead hides a detector in the detector config, and its flags then stay out of the queue and out of progress. You cannot show a hidden detector from the panel.
+
+**Reload queue** reads the queue again from the zone.
+
+On each item, the panel turns these layers back on: NGI aerial, raw labels, labels, both flag layers and tiles. A layer you hid comes back on the next item. The Sentinel-2 RGB starts off and follows the checkbox and `S`. It lies above the aerial imagery, so while it is on, it hides the aerial imagery.
+
+!!! note "Screenshot: the panel's filters set to one flag type, with the hidden detectors line below them"
+
 
 ## Proposals
 
@@ -180,21 +200,3 @@ python -m sentinel2data.cli needs-qgis --zones-dir <zones folder> --zone <zone>
 ```
 
 It prints one line per flag, with a point on the flag in the zone's coordinate system, for example `Z: flag 12 stub at 512340.0, 6249050.0`. Go to each point in QGIS and fix the labels by hand, as [Clean by hand in QGIS](clean-by-hand.md) describes.
-
-## Filters and display
-
-The three filters narrow the queue. Their values come from the zone.
-
-- **Kind:** `proposal`, `flag` or `tile`. Kind `flag` means flags that are not proposals.
-- **Flag type:** one of `gap`, `stub`, `duplicate`, `crossing`, `missing?` and `phantom?`.
-- **Source:** `labels` or `overture`.
-
-The filtered queue keeps the usual order. A flag type or a source filter leaves out every tile. To see the whole queue again, set each filter back to its "Any" value.
-
-Below the filters, the panel lists any hidden detectors. The team lead hides a detector in the detector config, and its flags then stay out of the queue and out of progress. You cannot show a hidden detector from the panel.
-
-**Reload queue** reads the queue again from the zone.
-
-On each item, the panel turns these layers back on: NGI aerial, raw labels, labels, both flag layers and tiles. A layer you hid comes back on the next item. The Sentinel-2 RGB starts off and follows the checkbox and `S`. It lies above the aerial imagery, so while it is on, it hides the aerial imagery.
-
-!!! note "Screenshot: the panel's filters set to one flag type, with the hidden detectors line below them"

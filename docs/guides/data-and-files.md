@@ -1,30 +1,28 @@
-# Data & files
+# Data Description
 
 Every file the guides use: what it is for, which steps need it, where it goes and where to get it.
 
 Terms such as zone package, baseline and second source are defined in the [glossary](../glossary.md). On this page, `<repo>` is your clone of the repo, `<zones-dir>` is a folder for zone packages, and `<data-dir>` is a folder for the full data. You choose where each folder goes.
 
-The data is for the team's own use. Do not share it outside the team.
+## Cleaning labels
 
-## If you only clean labels
-
-Most teammates only clean labels. Kelviy packages the zones and runs the detectors, so you need no raw data. You need these things:
+You need these things:
 
 - The repo, set up as in [Setup](setup.md).
 - The zone package of each zone you claim. That is the `<zone>/` folder and the four files in it, the first five rows of the table below.
 - An internet connection. QGIS loads the NGI aerial imagery from the web each time you open a zone.
 
-## If you package zones or change a detector
+## Regenerating package zones or changing a detector
 
-This second path runs `package-zones`, `detect` or `assign-zones` yourself, as described in [Change a detector or the packager](change-detector-or-packager.md). In addition to the repo, it needs the full data, the remaining rows of the table below.
+Run `package-zones`, `detect` or `assign-zones`, as described in [Change a detector or the packager](change-detector-or-packager.md). In addition to the repo, it needs the full data, the remaining rows of the table below.
 
-Use the same frozen baseline, roads parquet and zone imagery as everyone else. Each road's `raw_id` comes from its geometry and road class. A zone package built from other inputs gets other `raw_id` values, and its cleaned labels no longer match the baseline.
+Use the same frozen baseline, roads parquet and zone imagery. Each road's `raw_id` comes from its geometry and road class. A zone package built from other inputs gets other `raw_id` values, and its cleaned labels no longer match the baseline.
 
 ## All files
 
 | File | Purpose | Steps that need it | Where it goes | Where to get it |
 | --- | --- | --- | --- | --- |
-| `<zone>/` | The zone package, the folder that holds the next four files. Keep them together, because the QGIS project finds the other files by relative path. | All cleaning steps | `<zones-dir>/<zone>/` | The shared Drive. Ask kelviy for the link. See [Claim and download a zone](claim-and-download.md). |
+| `<zone>/` | The zone package, the folder that holds the next four files. Keep them together, because the QGIS project finds the other files by relative path. | All cleaning steps | `<zones-dir>/<zone>/` | The shared Drive. Ask kelviy for the link. See [File Downloads](claim-and-download.md). |
 | `<zone>.gpkg` | The zone GeoPackage. It holds the raw labels, the labels you edit, the tiles, the flags and your decisions. You hand back this file. | Review, clean by hand, hand back | `<zones-dir>/<zone>/` | In the zone package |
 | `<zone>.qgs` | The QGIS project. Open this file to work on the zone. | Review, clean by hand | `<zones-dir>/<zone>/` | In the zone package |
 | `<zone>_s2_rgbnir.tif` | The zone's 2020 Sentinel-2 red, green, blue and near-infrared bands. QGIS shows the file as the Sentinel-2 RGB and Sentinel-2 false colour layers. | Checking a temporal mismatch | `<zones-dir>/<zone>/` | In the zone package |
@@ -36,4 +34,4 @@ Use the same frozen baseline, roads parquet and zone imagery as everyone else. E
 | CDNGI road GeoPackages | The raw national road layer, one GeoPackage per province. You need them only to rebuild `cdngi_dense.parquet`. | `roads --cdngi` | `<data-dir>/<cdngi>/` | Ask kelviy for the files. |
 | Overture roads GeoParquet | The raw Overture download. You need it only to rebuild `overture_dense.parquet`. | `roads --overture` | `<data-dir>/<overture>.parquet` | Ask kelviy for the files. |
 | `detectors.yaml` | The detector thresholds and switches. Set `overture.path` to your copy of `overture_dense.parquet`. | `detect --detector-config` | `<repo>/src/sentinel2data/configs/detectors.yaml` | In the repo |
-| Assignment CSV | The zone copies each annotator cleans, one row per copy, with `zone`, `split`, `annotator`, `published` and `shared`. | Written by `assign-zones --out` | Any folder | Kelviy runs `assign-zones`. See [Claim and download a zone](claim-and-download.md). |
+| Assignment CSV | The zone copies each annotator cleans, one row per copy, with `zone`, `split`, `annotator`, `published` and `shared`. | Written by `assign-zones --out` | Any folder | Kelviy runs `assign-zones`. See [File Downloads](claim-and-download.md). |

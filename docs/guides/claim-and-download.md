@@ -1,39 +1,6 @@
-# Claim and download a zone
+# File Downloads
 
-Claim a zone in the shared Sheet, then download its zone package from the shared Drive.
-
-Before you start, finish [Setup](setup.md). Terms such as zone, split, owner and shared zone are defined in the [glossary](../glossary.md).
-
-## Claim a zone
-
-The team tracks who cleans which zone in a shared Google Sheet. Ask kelviy for the link. A claim in the Sheet stops two people from cleaning the same copy of a zone.
-
-The Sheet has one row per zone copy, with these columns:
-
-| Column | What it holds |
-| --- | --- |
-| zone | The zone filename stem, such as `SucculentKaroo_-30p88_18p74_Rural` |
-| split | `train`, `val` or `test` |
-| annotator | The person who cleans this copy, for example `Jane Doe` |
-| status | How far the work is |
-| returned date | The date the cleaned zone was uploaded |
-
-To claim a zone:
-
-1. Open the Sheet.
-2. Find the row of a zone that `assign-zones` gave you. The next section explains that command. If you do not know your zones, ask kelviy.
-3. If the **annotator** cell is empty, type your full name, for example `Jane Doe`.
-4. Set **status** to show that you started work on the zone, for example `claimed`.
-
-### How the Sheet relates to `assign-zones`
-
-The `assign-zones` command decides who cleans which zone. Kelviy runs it once for the team, and you do not run it. It reads the baseline and deals the 60 zones out among the annotators. Each person gets almost the same number of Urban, PeriUrban and Rural zones, and close to the same total road length. The command writes a CSV with one row per zone copy and the columns `zone`, `split`, `annotator`, `published` and `shared`. [Zone assignment](../explainers/zone-assignment.md) explains how it decides.
-
-Most zones have one copy, cleaned by its owner. The three shared zones are different. They are test zones that every annotator cleans in a separate copy, so the team can measure how much the annotators agree. Only the owner's copy goes into the dataset. If a shared zone is on your list, clean your own copy without help from the other annotators.
-
-To clean a zone that `assign-zones` gave to someone else, ask kelviy first.
-
-!!! note "Screenshot: the shared Sheet with one row claimed"
+Download from the shared Drive.
 
 ## Download the zone package
 
