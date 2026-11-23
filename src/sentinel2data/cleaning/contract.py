@@ -1,5 +1,7 @@
 """The zone GeoPackage contract shared by the packager, detectors, review core
 and assembler (see the KEL-5 spec and ``GLOSSARY.md``)."""
+import pandas as pd
+
 from sentinel2data.generator.config import CDNGI_ROAD_CLASSIFICATION, flatten_classification
 
 RAW_LABELS_LAYER = "raw_labels"
@@ -41,6 +43,14 @@ FLAG_FIELDS = {
     "decision": "string",
     "annotator": "string",
 }
+
+
+def parse_raw_ids(value) -> list[int]:
+    """A flag's ``raw_ids`` field as ``raw_id`` values, empty when it has none."""
+    if pd.isna(value) or not str(value).strip():
+        return []
+    return [int(r) for r in str(value).split(",")]
+
 
 # A table with no geometry, one row per detector run.
 DETECTOR_RUN_FIELDS = {

@@ -128,6 +128,18 @@ def package_zones(
         raise typer.Exit(1)
 
 
+def _packaged_zones(zones_dir, names) -> dict:
+    """zone filename -> zone GeoPackage under ``zones_dir``, for ``names`` or
+    every zone when none are given. An unknown name stops the command."""
+    from sentinel2data.cleaning.detect import find_packaged_zones
+
+    zones = find_packaged_zones(zones_dir)
+    unknown = [n for n in names or () if n not in zones]
+    if unknown:
+        raise typer.BadParameter(f"No zone GeoPackage under {zones_dir} for: {', '.join(unknown)}")
+    return {n: zones[n] for n in names} if names else zones
+
+
 @app.command()
 def detect(
     zones_dir: Annotated[
@@ -146,7 +158,7 @@ def detect(
     """Run the detectors on zone packages and write their flags into each zone GeoPackage."""
     from collections import Counter
 
-    from sentinel2data.cleaning.detect import ZoneSchemaOutdated, detect_zone, find_packaged_zones
+    from sentinel2data.cleaning.detect import ZoneSchemaOutdated, detect_zone
     from sentinel2data.cleaning.detectors import DEFAULT_CONFIG_PATH, DetectorConfig
     from sentinel2data.cleaning.packager import ZoneIsOpen
 
@@ -154,19 +166,15 @@ def detect(
         config = DetectorConfig.load(detector_config or DEFAULT_CONFIG_PATH)
     except ValueError as exc:
         raise typer.BadParameter(str(exc), param_hint="--detector-config") from exc
-    zones = find_packaged_zones(zones_dir)
-    names = list(zone) if zone else list(zones)
-    unknown = [n for n in names if n not in zones]
-    if unknown:
-        raise typer.BadParameter(f"No zone GeoPackage under {zones_dir} for: {', '.join(unknown)}")
+    zones = _packaged_zones(zones_dir, zone)
 
     def counts(found):
         return ", ".join(f"{t} {n}" for t, n in sorted(found.items())) or "no flags"
 
     total, refused = Counter(), []
-    for name in names:
+    for name, gpkg in zones.items():
         try:
-            zone_counts = detect_zone(zones[name], config)
+            zone_counts = detect_zone(gpkg, config)
         except (ZoneIsOpen, ZoneSchemaOutdated) as exc:
             refused.append(name)
             typer.echo(f"Refused {name}: {exc}", err=True)
@@ -178,6 +186,30 @@ def detect(
     if refused:
         typer.echo(f"{len(refused)} zone(s) not run (open elsewhere, or packaged before the flag contract): {', '.join(refused)}", err=True)
         raise typer.Exit(1)
+
+
+@app.command()
+def progress(
+    zones_dir: Annotated[
+        Path,
+        typer.Option(help="Directory `package-zones` wrote, one folder per zone"),
+    ],
+    zone: Annotated[
+        Optional[List[str]],
+        typer.Option(help="Zone filename stem to report on. Repeat for several; default all zones"),
+    ] = None,
+):
+    """Print how far through its review queue each zone is."""
+    from sentinel2data.cleaning import review
+
+    zones = _packaged_zones(zones_dir, zone)
+    for name, gpkg in zones.items():
+        p = review.progress(gpkg)
+        typer.echo(
+            f"{name}: {p.done}/{p.total} done, {p.remaining} remaining "
+            f"(flags {p.flags_decided}/{p.flags_total} decided, "
+            f"kept tiles {p.tiles_reviewed}/{p.tiles_kept} reviewed)"
+        )
 
 
 @app.command()

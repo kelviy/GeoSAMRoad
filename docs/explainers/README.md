@@ -15,6 +15,7 @@ Explainers cover how a feature works and why. They are not usage manuals, API re
 | [dataset-stats.md](dataset-stats.md) | How `norm-stats` and `summary` describe a dataset, and how the models normalise their input bands |
 | [zone-cleaning.md](zone-cleaning.md) | How `package-zones` turns the frozen baseline into a zone package for cleaning in QGIS |
 | [detectors.md](detectors.md) | How `detect` runs model-agnostic detectors over zone packages and writes their flags |
+| [review-queue.md](review-queue.md) | How the review core steps an annotator through a zone's flags and kept tiles and writes each decision into the zone GeoPackage, and what `progress` reports |
 | [zone-assignment.md](zone-assignment.md) | How `assign-zones` splits the zones between annotators and picks the shared test zones |
 | [training-data.md](training-data.md) | How `SAMROAD_Dataset` turns ROSA tiles into cropped, upsampled, augmented samples with road, keypoint and graph labels |
 | [models.md](models.md) | How `GeoSAMRoad` segments road and keypoint masks, scores links with TopoNet, and what the sam, terramind, unet and sgcn variants swap |

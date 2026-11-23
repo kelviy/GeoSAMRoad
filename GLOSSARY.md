@@ -119,6 +119,10 @@ _Avoid_: Overlap zone, calibration zone
 The ordered list of detector proposals, flags and kept tiles that an annotator works through one at a time, deciding on each. Anything that needs drawing is passed on to QGIS.
 _Avoid_: Triage, worklist
 
+**Review core**:
+The review queue's logic in plain Python, with no QGIS dependency. It builds the queue, records decisions and reports progress, and reads and writes only the zone GeoPackage. The QGIS plugin is a thin layer on top.
+_Avoid_: Review backend, queue engine
+
 **Cleaning spec**:
 The written rules annotators follow when deciding what counts as a defect and how to correct it. It is also the methodology reported in the paper.
 _Avoid_: Guidelines, rules, SOP

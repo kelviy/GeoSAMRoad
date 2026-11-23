@@ -2,7 +2,7 @@
 
 How `sentinel2data.cli package-zones` turns the frozen baseline into one zone package per zone, the folder an annotator opens in QGIS to clean that zone.
 
-> **Status, 2026-11-23.** This feature is in progress. The packager landed in commit `6a5f2b3` and KEL-9 is in review, with its manual QGIS check still open. KEL-47 added the flag key, the detector-run layer and the pending-output rule to the contract. KEL-48 added the `detect` command and its first detector, `stub`, described in [detectors.md](detectors.md), and KEL-49 made its re-runs idempotent. The other detectors, the review queue and the assembler from KEL-5 and KEL-11 do not exist yet. The usage manual is [docs/cleaning/zone-package.md](../cleaning/zone-package.md).
+> **Status, 2026-11-23.** This feature is in progress. The packager landed in commit `6a5f2b3` and KEL-9 is in review, with its manual QGIS check still open. KEL-47 added the flag key, the detector-run layer and the pending-output rule to the contract. KEL-48 added the `detect` command and its first detector, `stub`, described in [detectors.md](detectors.md), and KEL-49 made its re-runs idempotent. KEL-52 added the review core, described in [review-queue.md](review-queue.md). The other detectors, the QGIS review plugin and the assembler from KEL-5 and KEL-11 do not exist yet. The usage manual is [docs/cleaning/zone-package.md](../cleaning/zone-package.md).
 
 ## Core idea
 
