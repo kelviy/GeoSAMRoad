@@ -9,8 +9,13 @@ between annotators' machines. Layers, top to bottom:
   ``defect`` and ``road_class``. A new road defaults to ``added`` /
   ``Other Road``, and its ``buffer`` follows its ``road_class``.
 * Raw labels: read-only.
+* Overture roads: read-only, drawn as a line of circles, when the zone was
+  packaged with a second source. Snapping never uses it, so an annotator
+  can't copy its geometry into a label by accident.
 * Tiles: kept tiles outlined, ``dropped_no_road`` hatched, the rest greyed.
-* Sentinel-2 RGB (hidden at start) and the NGI aerial reference imagery (XYZ).
+* Sentinel-2 RGB and Sentinel-2 false colour (NIR, red, green), two views of
+  one 4-band file, both hidden at start, and the NGI aerial reference
+  imagery (XYZ).
 
 QGIS fills every element left out here with its defaults.
 """
@@ -28,6 +33,7 @@ from sentinel2data.cleaning.contract import (
     FLAGS_LAYER,
     LABEL_STATUSES,
     LABELS_LAYER,
+    OVERTURE_LAYER,
     PENDING,
     RAW_LABELS_LAYER,
     ROAD_BUFFER,
@@ -51,6 +57,25 @@ LABEL_STATUS_COLOURS = {
     "deleted": "150,150,150,200",
     "proposed": "227,26,180,255",
 }
+
+# How each flag type is drawn: the layer it shows in, its colour and, for a
+# point, its marker shape, so a type reads by shape as well as colour.
+FLAG_TYPE_STYLES = {
+    "gap": ("Point", "247,129,191,255", "diamond"),
+    "stub": ("Point", "228,26,28,255", "circle"),
+    "duplicate": ("Point", "152,78,163,255", "square"),
+    "crossing": ("Point", "166,86,40,255", "triangle"),
+    "missing?": ("Polygon", "228,26,28,255", None),
+    "phantom?": ("Polygon", "152,78,163,255", None),
+}
+assert set(FLAG_TYPE_STYLES) == set(FLAG_TYPES), "every flag type needs a style"
+
+# A flag decided real or not_defect needs nothing more, so it draws grey.
+# needs_qgis keeps its type colour: it is the work left to do in QGIS.
+DECIDED = "decided"
+DECIDED_COLOUR = "150,150,150,160"
+FLAG_STYLE_KEY = f"if(\"decision\" IN ('real', 'not_defect'), '{DECIDED}', \"type\")"
+FLAG_LABEL = "\"type\" || if(\"decision\" = 'pending', '', ' · ' || \"decision\")"
 
 
 # --- XML helpers ------------------------------------------------------------
@@ -120,11 +145,41 @@ def _fill_symbol(parent, name, fill, outline, outline_width=0.4, hatch=None):
     return sym
 
 
-def _marker_symbol(parent, name, colour):
+def _marker_symbol(parent, name, colour, shape="diamond"):
     sym = _symbol(parent, "marker", name)
     layer = _symbol_layer(sym, "SimpleMarker")
-    _options(layer, {"name": "diamond", "color": colour, "outline_color": "0,0,0,255",
+    _options(layer, {"name": shape, "color": colour, "outline_color": "0,0,0,255",
                      "size": 3.5, "size_unit": "MM", "outline_width": 0.3})
+    return sym
+
+
+def _flag_symbol(geometry, colour, shape):
+    if geometry == "Point":
+        return lambda s, n: _marker_symbol(s, n, colour, shape)
+    return lambda s, n: _fill_symbol(s, n, colour.rsplit(",", 1)[0] + ",40", colour, 0.8)
+
+
+def _labels(layer, expression, placement):
+    """Label every feature with ``expression``: black text, white halo."""
+    layer.set("labelsEnabled", "1")
+    settings = _el(_el(layer, "labeling", type="simple"), "settings")
+    style = _el(settings, "text-style", fieldName=expression, isExpression=1, fontSize=9,
+                fontSizeUnit="Point", textColor="0,0,0,255")
+    _el(style, "text-buffer", bufferDraw=1, bufferSize=1, bufferSizeUnits="MM", bufferColor="255,255,255,255")
+    _el(settings, "placement", placement=placement, dist=1, distUnits="MM")
+    _el(settings, "rendering", drawLabels=1)
+
+
+def _circle_line_symbol(parent, name, colour):
+    """A line drawn as circles every 4 mm, white with a ``colour`` outline."""
+    sym = _symbol(parent, "line", name)
+    layer = _symbol_layer(sym, "MarkerLine")
+    _options(layer, {"placements": "Interval", "interval": 4, "interval_unit": "MM", "rotate": 0})
+    circle = _symbol(layer, "marker", f"@{name}@0")
+    _options(_symbol_layer(circle, "SimpleMarker"), {
+        "name": "circle", "color": "255,255,255,255", "outline_color": colour,
+        "size": 1.8, "size_unit": "MM", "outline_width": 0.4,
+    })
     return sym
 
 
@@ -246,20 +301,36 @@ def _vector_layer(layers_el, *, layer_id, name, source, crs, geometry, wkb_type,
     return ml
 
 
-def _raster_layer(layers_el, *, layer_id, name, source, provider, crs):
+def _raster_layer(layers_el, *, layer_id, name, source, provider, crs, bands=None):
+    """``bands``: the (red, green, blue) band numbers to draw, for a local file."""
     ml = _el(layers_el, "maplayer", type="raster", styleCategories="AllStyleCategories")
     _el(ml, "id", _layer_id(layer_id))
     _el(ml, "datasource", source)
     _el(ml, "layername", name)
     _srs(_el(ml, "srs"), crs)
     _el(ml, "provider", provider)
+    if bands:
+        red, green, blue = bands
+        _el(_el(ml, "pipe"), "rasterrenderer", type="multibandcolor", opacity=1, alphaBand=-1,
+            redBand=red, greenBand=green, blueBand=blue)
     return ml
 
 
-def write_zone_project(path, *, gpkg, s2_rgb, crs, extent, road_columns):
+def _snapping(root, snap_layers, never_snap):
+    """Snapping, once the annotator turns it on, uses only ``snap_layers``.
+    QGIS would otherwise snap to every layer, ``never_snap`` included."""
+    settings = _el(root, "snapping-settings", mode=3, enabled=0, type=1, tolerance=12, unit=1,
+                   **{"intersection-snapping": 0, "self-snapping": 0})
+    layers = _el(settings, "individual-layer-settings")
+    for key, enabled in [(k, 1) for k in snap_layers] + [(k, 0) for k in never_snap]:
+        _el(layers, "layer-setting", id=_layer_id(key), enabled=enabled, type=1, tolerance=12, units=1)
+
+
+def write_zone_project(path, *, gpkg, s2_imagery, crs, extent, road_columns, overture=None):
     """Write the zone's QGIS project at ``path``.
 
-    ``gpkg`` and ``s2_rgb`` must sit in the project's folder. ``extent`` is
+    ``gpkg``, ``s2_imagery`` and ``overture``, the second-source roads
+    GeoPackage or None, must sit in the project's folder. ``extent`` is
     (xmin, ymin, xmax, ymax) in ``crs``, the view the project opens on.
     ``road_columns`` are the road attribute columns of the labels layers.
     """
@@ -289,15 +360,19 @@ def write_zone_project(path, *, gpkg, s2_rgb, crs, extent, road_columns):
         "decision": {"widget": _value_map(FLAG_DECISIONS), "default": (f"'{PENDING}'", False)},
         "annotator": {"default": (ANNOTATOR_DEFAULT, True)},
     }
-    for layer_id, name, geom_filter, geometry, wkb, symbol in (
-        ("flags_points", "Flags (points)", "Point", "Point", "Point",
-         lambda s, n: _marker_symbol(s, n, "255,0,0,255")),
-        ("flags_areas", "Flags (areas)", "Polygon", "Polygon", "Polygon",
-         lambda s, n: _fill_symbol(s, n, "255,0,0,40", "255,0,0,255", 0.6)),
+    # Each layer is styled by type, with a grey class for decided flags, and
+    # every flag is labelled with its type and any decision.
+    for layer_id, name, geometry, label_placement in (
+        ("flags_points", "Flags (points)", "Point", 0),  # around the point
+        ("flags_areas", "Flags (areas)", "Polygon", 4),  # horizontal, inside the area
     ):
-        ml = _vector_layer(layers, layer_id=layer_id, name=name, crs=crs, geometry=geometry, wkb_type=wkb,
-                           source=f"{gpkg_src}|layername={FLAGS_LAYER}|geometrytype={geom_filter}")
-        _single(ml, symbol)
+        ml = _vector_layer(layers, layer_id=layer_id, name=name, crs=crs, geometry=geometry, wkb_type=geometry,
+                           source=f"{gpkg_src}|layername={FLAGS_LAYER}|geometrytype={geometry}")
+        categories = [(flag_type, _flag_symbol(geometry, colour, shape))
+                      for flag_type, (geom, colour, shape) in FLAG_TYPE_STYLES.items() if geom == geometry]
+        categories.append((DECIDED, _flag_symbol(geometry, DECIDED_COLOUR, "circle")))
+        _categorized(ml, FLAG_STYLE_KEY, categories)
+        _labels(ml, FLAG_LABEL, label_placement)
         _field_config(ml, flag_fields)
         add(ml)
 
@@ -324,6 +399,14 @@ def write_zone_project(path, *, gpkg, s2_rgb, crs, extent, road_columns):
     _single(ml, lambda s, n: _line_symbol(s, n, "255,255,0,220", 1.6))
     add(ml)
 
+    # Second-source roads: read-only reference, never snapped to.
+    if overture is not None:
+        ml = _vector_layer(layers, layer_id="overture", name="Overture roads", crs=crs, geometry="Line",
+                           wkb_type="LineString", read_only=True,
+                           source=f"./{Path(overture).name}|layername={OVERTURE_LAYER}")
+        _single(ml, lambda s, n: _circle_line_symbol(s, n, "0,0,0,255"))
+        add(ml)
+
     # Tiles
     ml = _vector_layer(layers, layer_id="tiles", name="Tiles", crs=crs, geometry="Polygon",
                        wkb_type="Polygon", source=f"{gpkg_src}|layername={TILES_LAYER}")
@@ -347,11 +430,18 @@ def write_zone_project(path, *, gpkg, s2_rgb, crs, extent, road_columns):
     add(ml)
 
     # Imagery
-    add(_raster_layer(layers, layer_id="s2_rgb", name="Sentinel-2 RGB", source=f"./{Path(s2_rgb).name}",
-                      provider="gdal", crs=crs), visible=False)
+    s2_source = f"./{Path(s2_imagery).name}"
+    for layer_id, name, bands in (
+        ("s2_rgb", "Sentinel-2 RGB", (1, 2, 3)),
+        ("s2_false_colour", "Sentinel-2 false colour", (4, 1, 2)),  # NIR, red, green
+    ):
+        add(_raster_layer(layers, layer_id=layer_id, name=name, source=s2_source, provider="gdal",
+                          crs=crs, bands=bands), visible=False)
     xyz = f"type=xyz&url={NGI_AERIAL_URL}&zmin=0&zmax={NGI_AERIAL_MAX_ZOOM}"
     add(_raster_layer(layers, layer_id="ngi_aerial", name="NGI aerial", source=xyz,
                       provider="wms", crs=CRS.from_epsg(3857)))
+
+    _snapping(root, ["labels", "raw_labels"], ["overture"] if overture is not None else [])
 
     lo = _el(root, "layerorder")
     for layer_id in order:

@@ -8,10 +8,11 @@ python -m sentinel2data.cli package-zones \
   --imagery-dir ROSASampling60zones2020_images \
   --dataset-dir <baseline dataset written by generate> \
   --output-dir <zones folder> \
+  [--overture overture_dense.parquet] \
   [--zone <zone filename stem> ...] [--overwrite]
 ```
 
-Use the same `--roads` and `--imagery-dir` that `generate` was run with. Road classes the baseline excluded (Track, Slipway) are read from its `generation_report.yaml`.
+Use the same `--roads` and `--imagery-dir` that `generate` was run with. Road classes the baseline excluded (Track, Slipway) are read from its `generation_report.yaml`. Give `--overture` the same file as `overture.path` in the detector config, so the Overture layer in QGIS shows the roads that `missing?` and `phantom?` flags were measured against. Without it the zone has no Overture layer.
 
 Each `<zone>/` folder holds:
 
@@ -19,7 +20,8 @@ Each `<zone>/` folder holds:
 | --- | --- |
 | `<zone>.gpkg` | The zone GeoPackage: `raw_labels`, `labels`, `tiles`, `flags`, `detector_runs` |
 | `<zone>.qgs` | The QGIS project. Open this. |
-| `<zone>_s2_rgb.tif` | The zone's Sentinel-2 RGB, enhanced (gamma + CLAHE) |
+| `<zone>_s2_rgbnir.tif` | The zone's Sentinel-2 red, green, blue and NIR bands, each enhanced (gamma + CLAHE) |
+| `<zone>_overture.gpkg` | The Overture roads clipped to the zone, with `road_class`. Only with `--overture`. |
 
 All paths in the project are relative, so the folder can be copied to another machine as a whole.
 
@@ -35,11 +37,12 @@ Pending detector output is not cleaning work. That is every `pending` flag and e
 
 Layers, top to bottom:
 
-* **Flags (points)** / **Flags (areas)**: two views of the `flags` table, filled by the detectors.
+* **Flags (points)** / **Flags (areas)**: two views of the `flags` table, filled by the detectors. Each type has its own colour and marker shape, and a label with its type. A flag decided `real` or `not_defect` turns grey. A `needs_qgis` flag keeps its colour.
 * **Labels**: the layer you edit, coloured by `status`.
 * **Raw labels**: the frozen baseline, read-only, drawn as a yellow casing under the labels.
+* **Overture roads**: the second source, read-only, drawn as a line of white circles. Use it to find where to look, then draw from the aerial imagery. Snapping never uses this layer, and a road is never copied from it, because Overture is ODbL.
 * **Tiles**: kept tiles outlined in cyan, `dropped_no_road` hatched, `dropped_nan` and `untiled` greyed out. Only edit inside kept tiles.
-* **Sentinel-2 RGB**: hidden at start. Switch it on to check a temporal mismatch.
+* **Sentinel-2 RGB** and **Sentinel-2 false colour**: hidden at start. Switch one on to check a temporal mismatch. False colour shows NIR as red, so vegetation is red and roads, bare ground and buildings are not.
 * **NGI aerial**: the reference imagery (CDNGI aerial via `aerial.openstreetmap.org.za`).
 
 Field behaviour in the labels layer:

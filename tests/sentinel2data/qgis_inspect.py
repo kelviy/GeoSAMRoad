@@ -12,12 +12,14 @@ import sys
 
 from qgis.core import (
     QgsApplication,
+    QgsExpression,
     QgsFeature,
     QgsFieldConstraints,
     QgsGeometry,
     QgsPointXY,
     QgsMapLayerType,
     QgsProject,
+    QgsRenderContext,
     QgsVectorLayerUtils,
 )
 
@@ -28,8 +30,22 @@ def symbol_layers(symbol):
     return [sl.layerType() for sl in symbol.symbolLayers()] if symbol else []
 
 
+def symbol_info(symbol):
+    """Each symbol layer's type, and for a marker line the shape it repeats."""
+    layers = []
+    for sl in symbol.symbolLayers():
+        entry = {"type": sl.layerType()}
+        sub = sl.subSymbol()
+        if sub is not None and sub.symbolLayerCount() and hasattr(sub.symbolLayer(0), "shape"):
+            entry["marker"] = sub.symbolLayer(0).shape().name
+        layers.append(entry)
+    return layers
+
+
 def renderer_info(renderer):
     info = {"type": renderer.type()}
+    if renderer.type() == "singleSymbol":
+        info["symbol"] = symbol_info(renderer.symbol())
     if renderer.type() == "categorizedSymbol":
         info["field"] = renderer.classAttribute()
         info["categories"] = {
@@ -101,6 +117,35 @@ def split_road(layer, raw_id):
     return {"result": int(result), "pieces": pieces}
 
 
+def flag_looks(layer, types, decisions):
+    """For a flag of each type and decision, the legend class QGIS draws it
+    with, its symbol colour, and its label text."""
+    renderer, labeling = layer.renderer(), layer.labeling()
+    settings = labeling.settings() if labeling else None
+    label_expr = QgsExpression(settings.fieldName) if settings else None
+    context = QgsRenderContext()
+    context.setExpressionContext(layer.createExpressionContext())
+    renderer.startRender(context, layer.fields())
+    looks = {}
+    for flag_type in types:
+        for decision in decisions:
+            feat = QgsFeature(layer.fields())
+            feat.setAttribute("type", flag_type)
+            feat.setAttribute("decision", decision)
+            context.expressionContext().setFeature(feat)
+            symbol = renderer.symbolForFeature(feat, context)
+            keys = renderer.legendKeysForFeature(feat, context)
+            legend = {i.ruleKey(): i.label() for i in renderer.legendSymbolItems()}
+            looks[f"{flag_type}/{decision}"] = {
+                "class": [legend[k] for k in keys],
+                "colour": symbol.color().name() if symbol else None,
+                "shape": symbol.symbolLayer(0).shape().name if symbol and hasattr(symbol.symbolLayer(0), "shape") else None,
+                "label": label_expr.evaluate(context.expressionContext()) if label_expr else None,
+            }
+    renderer.stopRender(context)
+    return {"labels_enabled": layer.labelsEnabled(), "looks": looks}
+
+
 def road_class_allowed(layer):
     """Whether QGIS's enforced constraints accept a ``road_class`` value, for an
     existing road kept as it is or reclassified, and for an added road."""
@@ -156,10 +201,27 @@ def main(project_path):
                 entry["new_road"]["default"] = new_road(layer)
                 entry["split"] = split_road(layer, raw_id=1)
                 entry["road_class_allowed"] = road_class_allowed(layer)
+            if layer.name().startswith("Flags"):
+                types = layer.editorWidgetSetup(layer.fields().indexOf("type")).config()["map"]
+                decisions = layer.editorWidgetSetup(layer.fields().indexOf("decision")).config()["map"]
+                entry["flags"] = flag_looks(layer, [v for d in types for v in d.values()],
+                                            [v for d in decisions for v in d.values()])
         else:
             entry["band_count"] = layer.bandCount()
+            renderer = layer.renderer()
+            if renderer is not None and renderer.type() == "multibandcolor":
+                entry["rgb_bands"] = [renderer.redBand(), renderer.greenBand(), renderer.blueBand()]
         report["layers"][layer.name()] = entry
 
+    snapping = project.snappingConfig()
+    report["snapping"] = {
+        "enabled": snapping.enabled(),
+        "mode": snapping.mode().name,
+        "layers": {
+            layer.name(): settings.enabled()
+            for layer, settings in snapping.individualLayerSettings().items()
+        },
+    }
     print(json.dumps(report, default=str))
     app.exitQgis()
 

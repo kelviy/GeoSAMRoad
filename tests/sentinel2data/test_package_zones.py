@@ -27,7 +27,14 @@ from shapely.geometry import LineString, Point
 from typer.testing import CliRunner
 
 from sentinel2data.cli import app
-from tests.sentinel2data.synthetic_zone import TEST_ZONE, TRAIN_ZONE, VAL_ZONE, SyntheticZone
+from tests.sentinel2data.synthetic_zone import (
+    TEST_ZONE,
+    TRAIN_ZONE,
+    VAL_ZONE,
+    SyntheticZone,
+    train_pixels,
+    write_overture,
+)
 from tests.sentinel2data.test_generate import run_generate
 
 # The zone GeoPackage contract (KEL-5): layer -> fields, in order.
@@ -64,11 +71,23 @@ def run_package(zone: SyntheticZone, dataset_dir, output_dir, *extra_args, expec
     return result
 
 
+# Second-source roads around the train zone, which spans pixels 0..296.
+OVERTURE_INSIDE = train_pixels([(140, 15), (240, 15)])
+OVERTURE_CUT = train_pixels([(-50, 100), (100, 100)])  # the zone's west edge cuts it
+OVERTURE_OUTSIDE = train_pixels([(-200, 50), (-100, 50)])
+
+
 @pytest.fixture(scope="module")
-def packaged(shared_synthetic_zone, baseline, tmp_path_factory):
-    """All zones packaged once. Don't modify its files."""
+def overture(tmp_path_factory):
+    roads = [("residential", OVERTURE_INSIDE), ("primary", OVERTURE_CUT), ("track", OVERTURE_OUTSIDE)]
+    return write_overture(tmp_path_factory.mktemp("overture") / "overture.parquet", roads)
+
+
+@pytest.fixture(scope="module")
+def packaged(shared_synthetic_zone, baseline, overture, tmp_path_factory):
+    """All zones packaged once, with Overture. Don't modify its files."""
     out = tmp_path_factory.mktemp("packaged")
-    run_package(shared_synthetic_zone, baseline, out)
+    run_package(shared_synthetic_zone, baseline, out, "--overture", str(overture))
     return out
 
 
@@ -324,12 +343,21 @@ def test_an_edited_zone_does_not_stop_the_other_zones(fresh_package, shared_synt
     assert gpkg_path(fresh_package, VAL_ZONE).is_file() and gpkg_path(fresh_package, TEST_ZONE).is_file()
 
 
-def test_zone_folder_holds_the_zones_sentinel2_rgb(packaged, shared_synthetic_zone):
-    rgb_path = packaged / TRAIN_ZONE / f"{TRAIN_ZONE}_s2_rgb.tif"
-    with rasterio.open(shared_synthetic_zone.zone_path) as zone, rasterio.open(rgb_path) as rgb:
-        assert (rgb.count, rgb.width, rgb.height) == (3, zone.width, zone.height)
+def imagery_path(out, zone=TRAIN_ZONE):
+    return out / zone / f"{zone}_s2_rgbnir.tif"
+
+
+def test_zone_folder_holds_the_zones_sentinel2_rgb_and_nir(packaged, shared_synthetic_zone):
+    with rasterio.open(shared_synthetic_zone.zone_path) as zone, rasterio.open(imagery_path(packaged)) as rgb:
+        assert (rgb.count, rgb.width, rgb.height) == (4, zone.width, zone.height)
+        assert rgb.descriptions == ("red", "green", "blue", "nir")
+        # Each band follows its own source band: B4, B3, B2 and B8 (NIR).
+        source = zone.read([1, 2, 3, 4, 5]).reshape(5, -1)
+        written = rgb.read().reshape(4, -1).astype("float32")
+        corr = np.corrcoef(np.vstack([written, source]))[:4, 4:]
+        assert list(corr.argmax(axis=1)) == [0, 1, 2, 3]
         assert rgb.crs == zone.crs and rgb.transform == zone.transform
-        assert rgb.dtypes == ("uint8",) * 3 and rgb.nodata == 0
+        assert rgb.dtypes == ("uint8",) * 4 and rgb.nodata == 0
         data = rgb.read()
         assert (data > 0).all()  # no no-data in the synthetic zone
         assert all(len(np.unique(band)) > 100 for band in data)  # a stretched image, not a constant
@@ -341,10 +369,37 @@ def test_sentinel2_rgb_marks_nan_pixels_as_nodata(synthetic_zone, tmp_path):
         zone.write(np.full((1, 3, 3), np.nan, dtype="float32"), indexes=[2], window=Window(5, 7, 3, 3))
     out = tmp_path / "zones"
     run_package(synthetic_zone, run_generate(synthetic_zone, tmp_path / "ds"), out, "--zone", TRAIN_ZONE)
-    with rasterio.open(out / TRAIN_ZONE / f"{TRAIN_ZONE}_s2_rgb.tif") as rgb:
+    with rasterio.open(imagery_path(out)) as rgb:
         data = rgb.read()
     assert (data[:, 7:10, 5:8] == 0).all()
     assert (data[:, 0, :] > 0).all()
+
+
+def overture_path(out, zone=TRAIN_ZONE):
+    return out / zone / f"{zone}_overture.gpkg"
+
+
+def test_zone_folder_holds_the_overture_roads_clipped_to_the_zone(packaged, shared_synthetic_zone):
+    roads = gpd.read_file(overture_path(packaged), layer="overture_roads")
+    assert roads.crs.to_string() == shared_synthetic_zone.crs
+    assert list(roads.columns) == ["road_class", "geometry"]
+    assert sorted(roads["road_class"]) == ["primary", "residential"]
+    with rasterio.open(shared_synthetic_zone.zone_path) as zone:
+        bounds = shapely.box(*zone.bounds)
+    assert all(bounds.covers(g) for g in roads.geometry)
+    cut = roads.loc[roads["road_class"] == "primary"].geometry.iloc[0]
+    assert cut.length == pytest.approx(1000.0, abs=1.0)  # 150 px less the 50 px outside
+    assert not roads.geometry.has_z.any()
+
+
+def test_packaging_without_overture_removes_the_overture_layer(packaged, shared_synthetic_zone, baseline, overture, tmp_path):
+    out = tmp_path / "zones"
+    run_package(shared_synthetic_zone, baseline, out, "--zone", TRAIN_ZONE, "--overture", str(overture))
+    assert overture_path(out).is_file()
+    run_package(shared_synthetic_zone, baseline, out, "--zone", TRAIN_ZONE)
+    assert not overture_path(out).exists()
+    names = [ml.findtext("layername") for ml in ET.parse(project_path(out)).getroot().iter("maplayer")]
+    assert "Overture roads" not in names
 
 
 # --- QGIS project ---------------------------------------------------------
@@ -355,8 +410,8 @@ DEFECTS = ["gap", "stub", "misalignment", "phantom", "missing", "temporal"]
 ADDED_ROAD_BUFFERS = {"Other Road": 5.0, "Main Road": 8.0, "Street": 4.0}
 # Layer tree, top to bottom.
 PROJECT_LAYERS = [
-    "Flags (points)", "Flags (areas)", "Labels", "Raw labels", "Tiles",
-    "Sentinel-2 RGB", "NGI aerial",
+    "Flags (points)", "Flags (areas)", "Labels", "Raw labels", "Overture roads", "Tiles",
+    "Sentinel-2 RGB", "Sentinel-2 false colour", "NGI aerial",
 ]
 
 
@@ -426,7 +481,7 @@ def test_project_opens_in_qgis_with_every_layer_loading_from_the_moved_folder(qg
     layers = qgis_report["layers"]
     assert layers["Labels"]["feature_count"] == layers["Raw labels"]["feature_count"] == 14
     assert layers["Tiles"]["feature_count"] == 9
-    assert layers["Sentinel-2 RGB"]["band_count"] == 3
+    assert layers["Sentinel-2 RGB"]["band_count"] == 4
 
 
 def test_reference_imagery_is_an_xyz_layer_of_the_ngi_aerial(qgis_report):
@@ -495,6 +550,60 @@ def test_flags_load_as_point_and_area_views_with_a_decision_list(qgis_report):
         assert fields["decision"]["values"] == ["pending", "real", "not_defect", "needs_qgis"]
         assert fields["type"]["values"] == ["gap", "stub", "duplicate", "crossing", "missing?", "phantom?"]
         assert not any(fields[f]["editable"] for f in ("flag_key", "type", "detector", "raw_ids", "proposal_fid"))
+
+
+FLAG_LAYER_TYPES = {
+    "Flags (points)": ["gap", "stub", "duplicate", "crossing"],
+    "Flags (areas)": ["missing?", "phantom?"],
+}
+
+
+def test_each_flag_type_draws_differently_and_says_its_type_on_the_map(qgis_report):
+    for name, types in FLAG_LAYER_TYPES.items():
+        flags = qgis_report["layers"][name]["flags"]
+        assert flags["labels_enabled"], name
+        looks = flags["looks"]
+        pending = [looks[f"{t}/pending"] for t in types]
+        assert [p["class"] for p in pending] == [[t] for t in types], name
+        assert len({(p["colour"], p["shape"]) for p in pending}) == len(types), name
+        for t in types:
+            assert looks[f"{t}/pending"]["label"] == t
+
+
+def test_decided_flags_go_grey_but_needs_qgis_keeps_its_type_style(qgis_report):
+    for name, types in FLAG_LAYER_TYPES.items():
+        looks = qgis_report["layers"][name]["flags"]["looks"]
+        for t in types:
+            pending = looks[f"{t}/pending"]
+            for decision in ("real", "not_defect"):
+                done = looks[f"{t}/{decision}"]
+                assert done["class"] == ["decided"] and done["colour"] != pending["colour"], (name, t)
+                assert done["label"] == f"{t} · {decision}"
+            needs = looks[f"{t}/needs_qgis"]
+            assert (needs["class"], needs["colour"]) == (pending["class"], pending["colour"])
+            assert needs["label"] == f"{t} · needs_qgis"
+
+
+def test_overture_roads_are_a_read_only_line_of_circles(qgis_report):
+    layer = qgis_report["layers"]["Overture roads"]
+    assert layer["read_only"] and layer["feature_count"] == 2
+    assert layer["renderer"]["symbol"] == [{"type": "MarkerLine", "marker": "Circle"}]
+    assert qgis_report["visible"]["Overture roads"]
+
+
+def test_snapping_never_uses_overture_roads(qgis_report):
+    snapping = qgis_report["snapping"]
+    assert not snapping["enabled"]  # off until the annotator turns it on
+    assert snapping["mode"] == "AdvancedConfiguration"
+    assert snapping["layers"]["Overture roads"] is False
+    assert snapping["layers"]["Labels"] is True
+
+
+def test_sentinel2_shows_as_true_colour_and_nir_false_colour(qgis_report):
+    layers = qgis_report["layers"]
+    assert layers["Sentinel-2 RGB"]["rgb_bands"] == [1, 2, 3]
+    assert layers["Sentinel-2 false colour"]["rgb_bands"] == [4, 1, 2]
+    assert layers["Sentinel-2 RGB"]["source"] == layers["Sentinel-2 false colour"]["source"]
 
 
 def test_splitting_a_label_keeps_its_raw_id_and_attributes_on_both_pieces(qgis_report):

@@ -9,6 +9,8 @@ LABELS_LAYER = "labels"
 TILES_LAYER = "tiles"
 FLAGS_LAYER = "flags"
 DETECTOR_RUNS_LAYER = "detector_runs"
+# The one layer of <zone>_overture.gpkg, a separate file from the zone GeoPackage.
+OVERTURE_LAYER = "overture_roads"
 
 # labels
 LABEL_STATUSES = ("kept", "modified", "added", "deleted", "proposed")

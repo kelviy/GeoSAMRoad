@@ -2,11 +2,11 @@
 
 How `sentinel2data.cli package-zones` turns the frozen baseline into one zone package per zone, the folder an annotator opens in QGIS to clean that zone.
 
-> **Status, 2026-11-23.** This feature is in progress. The packager landed in commit `6a5f2b3` and KEL-9 is in review, with its manual QGIS check still open. KEL-47 added the flag key, the detector-run layer and the pending-output rule to the contract. KEL-48 added the `detect` command and its first detector, `stub`, described in [detectors.md](detectors.md), and KEL-49 made its re-runs idempotent. KEL-52 added the review core, described in [review-queue.md](review-queue.md). The other detectors, the QGIS review plugin and the assembler from KEL-5 and KEL-11 do not exist yet. The usage manual is [docs/cleaning/zone-package.md](../cleaning/zone-package.md).
+> **Status, 2026-11-23.** This feature is in progress. The packager landed in commit `6a5f2b3` and KEL-9 is in review, with its manual QGIS check still open. KEL-47 added the flag key, the detector-run layer and the pending-output rule to the contract. KEL-48 added the `detect` command and its first detector, `stub`, described in [detectors.md](detectors.md), and KEL-49 made its re-runs idempotent. KEL-52 added the review core, described in [review-queue.md](review-queue.md). The packager now also writes the NIR band and, with `--overture`, the zone's Overture roads. The other detectors, the QGIS review plugin and the assembler from KEL-5 and KEL-11 do not exist yet. The usage manual is [docs/cleaning/zone-package.md](../cleaning/zone-package.md).
 
 ## Core idea
 
-Cleaning happens per zone, not per tile. For each zone, the packager writes one GeoPackage that holds two copies of the zone's roads. One copy is the raw labels, which stay frozen. The other is the labels layer, which annotators edit in place. Each road row in both copies carries the same `raw_id`, so every cleaned row traces back to at most one raw row. The packager also writes a QGIS project that opens the GeoPackage with styling, value lists and the reference imagery already set up. It refuses to rebuild a zone that already holds cleaning work. Pending detector output does not count as cleaning work, because a detector re-run regenerates it.
+Cleaning happens per zone, not per tile. For each zone, the packager writes one GeoPackage that holds two copies of the zone's roads. One copy is the raw labels, which stay frozen. The other is the labels layer, which annotators edit in place. Each road row in both copies carries the same `raw_id`, so every cleaned row traces back to at most one raw row. The packager also writes a QGIS project that opens the GeoPackage with styling, value lists and the reference imagery already set up. Given a second source, it writes that source's roads to a separate file, and the project shows them as a read-only reference. It refuses to rebuild a zone that already holds cleaning work. Pending detector output does not count as cleaning work, because a detector re-run regenerates it.
 
 ## How it works
 
@@ -19,9 +19,10 @@ Cleaning happens per zone, not per tile. For each zone, the packager writes one 
    - `tiles` is the zone's `tile_status` table from the baseline, with `reviewed = False` and empty `note` and `annotator` added.
    - `flags` is created empty.
    - `detector_runs` is created empty. It is a table with no geometry.
-5. **Write the Sentinel-2 RGB.** `write_s2_rgb` reads bands 1 to 3 of the zone COG and stretches the whole zone with the generator's `enhance_rgb` gamma and CLAHE. It writes the result as 8-bit, with 0 kept for no data.
-6. **Write the QGIS project.** `write_zone_project` builds the `.qgs` XML directly, with no QGIS install needed.
-7. **Report.** The CLI packages every zone it can. It prints each refusal and exits with code 1 at the end if any zone was refused.
+5. **Write the Sentinel-2 imagery.** `write_s2_imagery` reads bands 1 to 4 of the zone COG, which are B4, B3, B2 and B8: red, green, blue and NIR. It stretches each band over the whole zone with the generator's `enhance_rgb` gamma and CLAHE, and writes `<zone>_s2_rgbnir.tif` as 8-bit, with 0 kept for no data.
+6. **Write the Overture roads.** With `--overture`, `write_overture_roads` reads the second-source roads around the zone with `load_zone_roads`, the same clip the raw labels use. It keeps `road_class` and writes one 2D LineString per row to `<zone>_overture.gpkg`. Without `--overture`, any old copy of that file is deleted.
+7. **Write the QGIS project.** `write_zone_project` builds the `.qgs` XML directly, with no QGIS install needed.
+8. **Report.** The CLI packages every zone it can. It prints each refusal and exits with code 1 at the end if any zone was refused.
 
 ## Details that matter
 
@@ -43,10 +44,15 @@ Cleaning happens per zone, not per tile. For each zone, the packager writes one 
   It ignores pending detector output. That is every `pending` flag with no `annotator`, and every `status = proposed` label row with no `annotator` that such a flag's `proposal_fid` points at. QGIS stamps `annotator` whenever someone saves a row, so a stamped row is human work even while its flag is pending. A `proposed` row whose flag is decided or missing still counts as a status other than `kept`. It never reads `detector_runs`, so zones packaged before that layer existed still repackage. It checks geometry only when no other label work was found. It does not check tile `status` or tile geometry.
 - **Raw labels come from the parquet again, not from the baseline dataset.** The baseline directory supplies only the `tile_status` table and the excluded classes. If `generation_report.yaml` is missing, the packager falls back to `EXCLUDED_ROAD_CLASSES`, which is Footpath, Track and Slipway.
 - **Columns that hold lists or dicts are dropped.** `_is_scalar` checks the first non-null value of each column. On CDNGI the road columns kept are `data_source`, `road_class`, `scale_class`, `buffer` and `surface`.
-- **The Sentinel-2 RGB stretch covers the whole zone.** The generator stretches each tile on its own, so a pixel can look different in the zone RGB and in the tile imagery. NaN pixels are set to 0. The file uses 256 px deflate blocks and average overviews at 2, 4, 8 and 16.
-- **The QGIS project encodes the editing rules.** Layers from top to bottom are Flags (points), Flags (areas), Labels, Raw labels, Tiles, Sentinel-2 RGB and NGI aerial.
+- **The Sentinel-2 stretch covers the whole zone.** The generator stretches each tile on its own, so a pixel can look different in the zone imagery and in the tile imagery. A pixel that is NaN in any of the four bands is 0 in all four. The file uses 256 px deflate blocks and average overviews at 2, 4, 8 and 16. Its photometric tag is `MINISBLACK`, not `RGB`, because GDAL would read the fourth band of an RGB file as alpha.
+- **The QGIS project encodes the editing rules.** Layers from top to bottom are Flags (points), Flags (areas), Labels, Raw labels, Overture roads, Tiles, Sentinel-2 RGB, Sentinel-2 false colour and NGI aerial. Overture roads is there only when the zone was packaged with `--overture`.
   - The two flag layers read the one `flags` table, filtered by geometry type.
+  - Each flag type has its own colour, and on the points layer its own marker shape. `FLAG_TYPE_STYLES` in `qgis_project.py` holds the styles and must cover every type in `FLAG_TYPES`. Every flag is labelled with its type, followed by its decision once it has one, for example `stub · real`.
+  - A flag decided `real` or `not_defect` is drawn grey. A `needs_qgis` flag keeps its type style, because it marks work still to do in QGIS. An expression on `decision` and `type` picks each flag's legend class, so no extra field stores whether a flag is decided.
   - Raw labels are read-only and drawn as a 1.6 mm yellow casing.
+  - Overture roads are read-only and drawn as white circles with a black outline every 4 mm, so they never look like a solid label line.
+  - Snapping is off at start, as in any new QGIS project. The project sets it to advanced mode, so once an annotator turns it on, it snaps to Labels and Raw labels only. QGIS's default mode would snap to every layer, Overture roads included.
+  - Sentinel-2 RGB draws bands 1, 2 and 3. Sentinel-2 false colour reads the same file and draws bands 4, 1 and 2, which are NIR, red and green.
   - A new label row defaults to `status = added` and `road_class = Other Road`.
   - The `road_class` drop-down offers only Other Road, Main Road and Street.
   - `buffer` and `scale_class` are read-only. A default expression that QGIS reapplies on every save recomputes both from `road_class`, using `CDNGI_ROAD_CLASSIFICATION`. Other Road gets 5 m, Main Road 8 m and Street 4 m.
@@ -70,6 +76,7 @@ Cleaning happens per zone, not per tile. For each zone, the packager writes one 
 - **The `.qgs` is hand-written XML, not built with PyQGIS.** Reason unknown, see [KEL-24](https://linear.app/kelvinwei/issue/KEL-24).
 - **Raw labels are rebuilt from the roads parquet, not read from the baseline dataset.** Reason unknown, see [KEL-25](https://linear.app/kelvinwei/issue/KEL-25).
 - **Flags carry only a location.** Overture and OSM are ODbL, and copying their geometry would make ROSA a derivative database. KEL-5 and [open directions](../cleaning/open-directions.md) record this. The labels-only detectors write a point. The `overture` detector writes a rounded bounding box, never Overture geometry. See [detectors.md](detectors.md).
+- **Overture roads sit in their own file, and snapping skips them.** The annotator sees Overture lines to know where to look, but draws every label from the imagery, as [open directions](../cleaning/open-directions.md) requires. Keeping Overture out of the zone GeoPackage means the file that becomes the published labels never holds Overture geometry. Turning snapping off for the layer stops a traced label from picking up Overture vertices by accident.
 - **The reference imagery decides position, and 2020 Sentinel-2 decides a clear temporal mismatch.** See [ADR 0001](../adr/0001-aerial-authority-with-temporal-override.md). This is why the project ships both the NGI aerial layer and the hidden Sentinel-2 RGB, and why `temporal` is a defect value.
 
 ## How detectors fit in
@@ -78,6 +85,8 @@ Cleaning happens per zone, not per tile. For each zone, the packager writes one 
 
 ## Weak spots and ideas
 
+- **Nothing stops pasting an Overture road into Labels.** Suspected, not tried in this project. QGIS can copy features from any layer and paste them into an editable one. The project only turns snapping off. A pasted row has no `raw_id` and the status `added`, so it looks like a drawn road. Idea: a check before assembly that compares `added` rows against Overture geometry.
+- **A zone packaged before the NIR change keeps its old `<zone>_s2_rgb.tif`.** Observed. The packager writes the new name and never deletes the old file, so a repackaged folder holds both.
 - **`raw_id` is fragile to any upstream change.** Observed. `raw_id` is a rank, not a hash, so adding or removing one road in the zone renumbers every row after it. A pyproj, GEOS or GDAL version change that moves a clipped coordinate by one bit changes the sort key too. A content hash would survive both, at the cost of a less readable id.
 - **Nothing ties the packaged raw labels to the frozen baseline.** Observed. The packager trusts that `--roads` and `--imagery-dir` are the ones `generate` used. A different or edited parquet gives raw labels that no longer match the tiles, and no check catches it. The generation report could store a hash of the parquet, and the packager could compare it.
 - **Human work on pending output rests on the `annotator` stamp.** Observed. Repackaging drops pending detector output with no backup, and a detector re-run brings it back. An edit to a pending flag or proposal survives only because QGIS stamps `annotator` on save. A tool that edits the GeoPackage without setting `annotator` would lose its edits to pending rows.
@@ -99,7 +108,8 @@ Cleaning happens per zone, not per tile. For each zone, the packager writes one 
 - `cleaning/packager.py`, `raw_labels`: rebuilds the zone's raw labels and assigns `raw_id`.
 - `cleaning/packager.py`, `editable_labels`, `tile_grid`, `empty_flags` and `write_zone_gpkg`: build and write the five layers.
 - `cleaning/packager.py`, `zone_cleaning_work` and `is_open_elsewhere`: decide whether a zone is safe to replace.
-- `cleaning/packager.py`, `write_s2_rgb`: writes the zone's 8-bit Sentinel-2 RGB.
+- `cleaning/packager.py`, `write_s2_imagery`: writes the zone's 8-bit Sentinel-2 red, green, blue and NIR.
+- `cleaning/packager.py`, `write_overture_roads`: writes the zone's copy of the second-source roads.
 - `cleaning/qgis_project.py`, `write_zone_project`: writes the `.qgs`. `_road_fields` and `_road_class_rule` hold the class and buffer rules.
 - `tests/sentinel2data/test_package_zones.py`: end-to-end tests on the synthetic zone, covering the contract, `raw_id` stability, refusal, the RGB and the project.
 - `tests/sentinel2data/qgis_inspect.py`: loads the project in a real QGIS 3 Python, outside the repo venv, and reports what an annotator would see. The tests skip it when no QGIS Python is found.

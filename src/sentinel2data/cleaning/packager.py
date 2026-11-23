@@ -5,8 +5,12 @@
 * ``<zone>.gpkg``: the zone GeoPackage (raw labels, labels, tiles, flags,
   detector runs).
 * ``<zone>.qgs``: the QGIS project an annotator opens (see ``qgis_project``).
-* ``<zone>_s2_rgb.tif``: the zone's Sentinel-2 RGB, enhanced the way the
-  generator's enhanced-RGB bands are (gamma + CLAHE), as 8-bit with 0 = no data.
+* ``<zone>_s2_rgbnir.tif``: the zone's Sentinel-2 red, green, blue and NIR,
+  each enhanced the way the generator's enhanced-RGB bands are (gamma +
+  CLAHE), as 8-bit with 0 = no data.
+* ``<zone>_overture.gpkg``: the second-source roads clipped to the zone, when
+  packaged with one. A separate file, so no second-source geometry ever sits
+  in the zone GeoPackage that becomes the published labels.
 """
 from dataclasses import dataclass
 from datetime import datetime
@@ -27,6 +31,7 @@ from sentinel2data.cleaning.contract import (
     FLAG_FIELDS,
     FLAGS_LAYER,
     LABELS_LAYER,
+    OVERTURE_LAYER,
     PENDING,
     is_pending_detector_output,
     RAW_LABELS_LAYER,
@@ -84,8 +89,12 @@ class ZoneFolder:
         return self.root / f"{self.zone_filename}.qgs"
 
     @property
-    def s2_rgb(self) -> Path:
-        return self.root / f"{self.zone_filename}_s2_rgb.tif"
+    def s2_imagery(self) -> Path:
+        return self.root / f"{self.zone_filename}_s2_rgbnir.tif"
+
+    @property
+    def overture(self) -> Path:
+        return self.root / f"{self.zone_filename}_overture.gpkg"
 
 
 def find_zones(imagery_dir) -> dict:
@@ -190,25 +199,48 @@ def write_zone_gpkg(path, raw, tiles):
     pyogrio.write_dataframe(_empty_table(DETECTOR_RUN_FIELDS), path, layer=DETECTOR_RUNS_LAYER, driver="GPKG")
 
 
-def write_s2_rgb(cog_path, out_path):
-    """The zone's enhanced Sentinel-2 RGB as a 3-band uint8 GeoTIFF with overviews."""
-    cfg = RGBEnhanceConfig()
+# Zone COG bands written to the imagery file, in order, with their names.
+S2_IMAGERY_BANDS = {1: "red", 2: "green", 3: "blue", 4: "nir"}  # B4, B3, B2, B8
+
+
+def write_s2_imagery(cog_path, out_path):
+    """The zone's enhanced Sentinel-2 red, green, blue and NIR as a 4-band
+    uint8 GeoTIFF with overviews. A pixel with no data in any band is 0 in all."""
     with rasterio.open(cog_path) as src:
-        rgb = src.read(list(cfg.rgb_bands)).astype("float32")
+        bands = src.read(list(S2_IMAGERY_BANDS)).astype("float32")
         profile = {
-            "driver": "GTiff", "width": src.width, "height": src.height, "count": 3,
+            "driver": "GTiff", "width": src.width, "height": src.height, "count": len(S2_IMAGERY_BANDS),
             "dtype": "uint8", "nodata": 0, "crs": src.crs, "transform": src.transform,
             "tiled": True, "blockxsize": 256, "blockysize": 256, "compress": "deflate",
-            "photometric": "RGB",
+            # Not RGB: GDAL would then read a 4th band as alpha.
+            "photometric": "MINISBLACK",
         }
-    valid = np.isfinite(rgb).all(axis=0)
+    valid = np.isfinite(bands).all(axis=0)
     # 1..255 for data, so 0 stays free for no data.
-    out = (1 + np.round(enhance_rgb(rgb, cfg) * 254)).astype("uint8")
+    out = (1 + np.round(enhance_rgb(bands, RGBEnhanceConfig()) * 254)).astype("uint8")
     out[:, ~valid] = 0
     with rasterio.open(out_path, "w", **profile) as dst:
         dst.write(out)
+        dst.descriptions = tuple(S2_IMAGERY_BANDS.values())
         dst.build_overviews([2, 4, 8, 16], Resampling.average)
     return Path(out_path)
+
+
+
+def write_overture_roads(cog_path, overture_path, out_path):
+    """The second-source roads clipped to the zone, one 2D LineString per row
+    with its ``road_class``, as a fresh GeoPackage at ``out_path``."""
+    zone = load_zone_roads(cog_path, overture_path)
+    roads = zone.roads
+    if "road_class" not in roads:  # no roads in the zone
+        roads = roads.assign(road_class=pd.Series([], dtype="string"))
+    roads = roads[["road_class", roads.geometry.name]].explode(index_parts=False)
+    roads = roads.set_geometry(shapely.force_2d(roads.geometry.values), crs=zone.crs)
+    roads = roads[(roads.geom_type == "LineString") & (roads.length > 0)]
+    out_path = Path(out_path)
+    out_path.unlink(missing_ok=True)
+    roads.to_file(out_path, layer=OVERTURE_LAYER, driver="GPKG", geometry_type="LineString")
+    return out_path
 
 
 def zone_cleaning_work(gpkg) -> list:
@@ -277,7 +309,9 @@ def is_open_elsewhere(gpkg) -> bool:
     return gpkg.with_name(gpkg.name + "-wal").exists()
 
 
-def package_zone(zone: ZoneInputs, *, roads_path, dataset_dir, output_dir, overwrite=False) -> ZoneFolder:
+def package_zone(
+    zone: ZoneInputs, *, roads_path, dataset_dir, output_dir, overwrite=False, overture_path=None,
+) -> ZoneFolder:
     """Write one zone's folder. Refuses (``ZoneHasCleaningWork``) to replace a zone
     GeoPackage that holds cleaning work unless ``overwrite``, which first moves
     the old file aside as ``<zone>.gpkg.<timestamp>.bak``. Never replaces one
@@ -305,11 +339,16 @@ def package_zone(zone: ZoneInputs, *, roads_path, dataset_dir, output_dir, overw
     tmp = folder.gpkg.with_name(f".{folder.gpkg.name}.tmp")
     write_zone_gpkg(tmp, raw, tile_grid(tile_status))
     tmp.replace(folder.gpkg)
-    write_s2_rgb(zone.cog_path, folder.s2_rgb)
+    write_s2_imagery(zone.cog_path, folder.s2_imagery)
+    if overture_path is None:
+        folder.overture.unlink(missing_ok=True)
+    else:
+        write_overture_roads(zone.cog_path, overture_path, folder.overture)
     with rasterio.open(zone.cog_path) as src:
         crs, extent = src.crs.to_string(), tuple(src.bounds)
     write_zone_project(
-        folder.project, gpkg=folder.gpkg, s2_rgb=folder.s2_rgb, crs=crs, extent=extent,
+        folder.project, gpkg=folder.gpkg, s2_imagery=folder.s2_imagery,
+        overture=folder.overture if overture_path is not None else None, crs=crs, extent=extent,
         road_columns=[c for c in raw.columns if c not in ("raw_id", "geometry")],
     )
     return folder

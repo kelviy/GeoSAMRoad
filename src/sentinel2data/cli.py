@@ -100,10 +100,17 @@ def package_zones(
         bool,
         typer.Option(help="Repackage zones whose GeoPackage already holds cleaning work (old file kept as .bak)"),
     ] = False,
+    overture: Annotated[
+        Optional[Path],
+        typer.Option(help="Second-source roads parquet (the `overture.path` that `detect` compares with). "
+                          "Each zone gets a read-only Overture roads layer clipped to it"),
+    ] = None,
 ):
     """Package zones for cleaning: a zone GeoPackage and a QGIS project per zone."""
     from sentinel2data.cleaning.packager import ZoneHasCleaningWork, ZoneIsOpen, find_zones, package_zone
 
+    if overture is not None and not overture.expanduser().is_file():
+        raise typer.BadParameter(f"No second-source roads file at {overture}", param_hint="--overture")
     zones = find_zones(imagery_dir)
     names = list(zone) if zone else sorted(zones)
     unknown = [n for n in names if n not in zones]
@@ -116,6 +123,7 @@ def package_zones(
             folder = package_zone(
                 zones[name], roads_path=roads, dataset_dir=dataset_dir,
                 output_dir=output_dir, overwrite=overwrite,
+                overture_path=overture.expanduser() if overture else None,
             )
         except (ZoneHasCleaningWork, ZoneIsOpen) as exc:
             refused.append(name)
