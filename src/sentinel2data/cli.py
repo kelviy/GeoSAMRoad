@@ -241,6 +241,49 @@ def needs_qgis(
 
 
 @app.command()
+def precision(
+    zones_dir: Annotated[
+        Path,
+        typer.Option(help="Directory `package-zones` wrote, one folder per zone"),
+    ],
+    zone: Annotated[
+        Optional[List[str]],
+        typer.Option(help="Zone filename stem to report on. Repeat for several; default all zones"),
+    ] = None,
+):
+    """Print detector precision, the share of decided flags marked real, per zone and over all of them."""
+    from sentinel2data.cleaning import precision as prec
+
+    def line(label, group, c):
+        detector, flag_type = group
+        share = (
+            f"{c.precision:.1%} ({c.real} real / {c.judged} judged)"
+            if c.precision is not None
+            else "no decisions"
+        )
+        return f"{label}: {detector}:{flag_type} {share}, needs_qgis {c.needs_qgis}, pending {c.pending}"
+
+    try:
+        per_zone = {name: prec.zone_counts(gpkg) for name, gpkg in _packaged_zones(zones_dir, zone).items()}
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+    overall = "All zones" if not zone else f"{len(per_zone)} selected zone(s)"
+    typer.echo(
+        "Precision = real / (real + not_defect). needs_qgis and pending flags are left out "
+        f"of it and counted apart. {overall} pools every zone's flags; it does not average "
+        "the zone shares."
+    )
+    for name, groups in per_zone.items():
+        if not groups:
+            typer.echo(f"{name}: no flags")
+        for group, c in groups.items():
+            typer.echo(line(name, group, c))
+    for group, c in prec.pooled(per_zone.values()).items():
+        typer.echo(line(overall, group, c))
+
+
+@app.command()
 def roads(
     out: Annotated[
         Path, 

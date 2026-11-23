@@ -1,8 +1,8 @@
 # Review queue
 
-How the review core in `sentinel2data.cleaning.review` steps an annotator through a zone's flags and kept tiles, and writes each decision into the zone GeoPackage. `sentinel2data.cli progress` reports how far each zone has got, and `sentinel2data.cli needs-qgis` lists the flags left for plain QGIS editing.
+How the review core in `sentinel2data.cleaning.review` steps an annotator through a zone's flags and kept tiles, and writes each decision into the zone GeoPackage. `sentinel2data.cli progress` reports how far each zone has got, `sentinel2data.cli needs-qgis` lists the flags left for plain QGIS editing, and `sentinel2data.cli precision` reports how often each detector's flags turned out real.
 
-> **Status, 2026-11-23.** KEL-52 built the core: the queue, flag decisions, tile review and progress. KEL-54 added going back to change a decision, resuming, filters, hidden detectors and the `needs_qgis` list. Accepting and rejecting proposals is KEL-56, and the precision report is KEL-55. The QGIS plugin that will sit on top does not exist yet. [detectors.md](detectors.md) describes where the flags come from.
+> **Status, 2026-11-23.** KEL-52 built the core: the queue, flag decisions, tile review and progress. KEL-54 added going back to change a decision, resuming, filters, hidden detectors and the `needs_qgis` list. KEL-55 added the precision report. Accepting and rejecting proposals is KEL-56. The QGIS plugin that will sit on top does not exist yet. [detectors.md](detectors.md) describes where the flags come from.
 
 ## Core idea
 
@@ -18,6 +18,7 @@ The review queue is every flag in the zone, then every kept tile, each swept acr
 6. **Review a tile.** `review_tile` sets `reviewed`, `note` and `annotator` on a kept tile. Reviewing it again replaces the annotator. It replaces the note only when a new one is given, so a second review without a note keeps the first note.
 7. **Report progress.** `progress` counts decided flags out of all queued flags and reviewed tiles out of kept tiles. Hidden detectors' flags are not counted. The `progress` command prints one line per zone, for example `Z: 3/9 done, 6 remaining (flags 2/7 decided, kept tiles 1/2 reviewed)`.
 8. **List the `needs_qgis` flags.** `needs_qgis_items` returns every flag marked `needs_qgis`, in queue order, each with a point on it and its extent. The `needs-qgis` command prints one line per flag, for example `Z: flag 12 stub at 512340.0, 6249050.0`, in the zone's CRS.
+9. **Report precision.** `precision.zone_counts` counts each zone's flags by detector, flag type and decision, and `precision.pooled` sums those counts over zones. The `precision` command prints one line per zone, detector and type, then the same lines for the zones together, labelled `All zones` or, under `--zone`, `N selected zone(s)`, for example `Z: stub:stub 66.7% (2 real / 3 judged), needs_qgis 1, pending 4`.
 
 ## Which rows `real` deletes
 
@@ -45,6 +46,18 @@ The review queue is every flag in the zone, then every kept tile, each swept acr
 - **Hidden detectors** are set in the detector config. Each detector section has `hidden: false` next to `enabled`. `hidden_detectors` reads the config of the zone's latest `detect` run from `detector_runs`. A hidden detector still runs and writes its flags. Only the queue and `progress` leave them out. To hide or show one, the team lead edits the config and runs `detect` again.
 - **`needs_qgis_items` ignores hiding.** A flag marked `needs_qgis` before its detector was hidden still needs fixing.
 
+## Detector precision
+
+Detector precision is `real / (real + not_defect)` for one detector and flag type. The paper reports it, and the early check on about 30 flags per type in one Urban, one PeriUrban and one Rural zone uses it to pick the detectors to hide.
+
+- **`needs_qgis` is left out of the share** and counted on its own. It sends a flag to plain QGIS editing and does not record whether the flag was a defect. `NothingToDelete` tells the annotator to mark a real `phantom?` flag it can't delete `needs_qgis`. If most `needs_qgis` flags are real, leaving them out lowers the share. The report prints the count, so a reader can recompute the share either way.
+- **`real` and `not_defect` flags are the judged flags.** The share is `real` over judged. `progress` counts `needs_qgis` as decided, so judged is fewer than decided.
+- **Pending flags are left out of the share** and counted on their own. A NULL decision counts as pending.
+- **Proposals have no rule of their own.** Under KEL-56 an accepted proposal marks its flag `real` and a rejected one `not_defect`, so they count like any other flag. Until KEL-56 lands, this rests on tests over hand-written decision rows.
+- **The overall lines pool the flags.** They sum the counts over the zones and then divide, so a zone with many flags weighs more than one with few. The command prints this rule in its first line.
+- **Hidden detectors count.** The report reads every flag in the `flags` layer, because the precision check is what decides which detectors to hide.
+- **An unknown decision stops the report.** A value outside `pending`, `real`, `not_defect` and `needs_qgis`, which only a hand edit in QGIS can write, raises `ValueError` with the flag fids, and the command prints it and exits 1.
+
 ## Details that matter
 
 - **A decision clears the position.** After a change made by going back, the annotator lands on the first item not done again. A step forward past a pending item works as a skip, and the next decision brings the annotator back to the skipped item.
@@ -67,6 +80,7 @@ The review queue is every flag in the zone, then every kept tile, each swept acr
 - **No separate app state.** KEL-11 user story 31: a crash must lose nothing. That is why every call reopens the file and nothing is cached between calls.
 - **The annotator on every write.** KEL-11 user story 30, for the agreement study.
 - **`status = deleted`, never a removed row.** KEL-5 user story 19 says every raw row must survive for the raw versus cleaned comparison. [zone-cleaning.md](zone-cleaning.md) covers this.
+- **Precision per detector and flag type, per zone and pooled.** KEL-11 user story 33. KEL-55's agent notes ask for pooling across zones and for the output to say so.
 - **No QGIS import.** KEL-11 makes the core plain Python so that a local web app could replace the plugin if the plugin turns out to be impractical. A test runs a fresh interpreter, imports the core and checks that no `qgis` or PyQt module got loaded.
 - **Covered rows only for `phantom?`.** The ticket's agent notes leave it open whether `real` deletes whole rows. Deleting whole rows would delete roads the second source matches. Refusing only when nothing is covered still lets a fully phantom road go in one key.
 
@@ -83,6 +97,8 @@ The review queue is every flag in the zone, then every kept tile, each swept acr
 - **Added rows are never deleted.** By design: they have no `raw_id`, so no flag names them.
 - **The whole queue is rebuilt on every call.** `current_item` and `progress` build the full queue each time. On the densest real zone, CapeTown_Fynbos_-33p96_18p61_Urban, with no flags, that takes 27 ms. Not measured with thousands of flags.
 - **A flag's tile is the nearest tile of any status.** A flag next to a dropped tile can sort with that tile, not with the kept tile it touches. The order is still deterministic.
+- **Precision mixes detector settings.** Observed. A flag does not record the config that placed it, so a share over flags from runs with different thresholds mixes those thresholds. Tuning a detector between the early check and full cleaning leaves both kinds of flag in one share.
+- **No machine-readable output.** The `precision` command prints text only. Someone copies the paper's tables from it by hand.
 
 ## Code map
 
@@ -94,7 +110,9 @@ The review queue is every flag in the zone, then every kept tile, each swept acr
 - `cleaning/review.py`, `_delete_row`, `_undo_deletions`, `_ensure_review_tables`: the deletion log in `flag_deletions` and its undo.
 - `cleaning/review.py`, `needs_qgis_items`: the `needs_qgis` list.
 - `cleaning/review.py`, `review_tile`: tile review.
+- `cleaning/precision.py`, `zone_counts`, `pooled`, `DecisionCounts`: detector precision.
 - `cleaning/review.py`, `_writing`: the SQLite write path with the trigger stand-ins.
 - `cleaning/contract.py`, `parse_raw_ids`: reads a flag's `raw_ids` field.
-- `cli.py`, `progress` and `needs_qgis`: the commands. `_packaged_zones` picks the zones for them and for `detect`.
+- `cli.py`, `progress`, `needs_qgis` and `precision`: the commands. `_packaged_zones` picks the zones for them and for `detect`.
 - `tests/sentinel2data/test_review.py`: end-to-end tests on the packaged synthetic zone after `detect`. Phantom flags are hand-written rows.
+- `tests/sentinel2data/test_precision.py`: precision on hand-written decision rows in the packaged synthetic zones.

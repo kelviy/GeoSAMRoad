@@ -131,6 +131,10 @@ _Avoid_: Cursor, bookmark
 A detector whose flags the review queue and progress leave out, set with `hidden` in the detector config. Its flags are still written to the zone GeoPackage.
 _Avoid_: Muted detector, disabled detector (a disabled detector does not run)
 
+**Detector precision**:
+For one detector and flag type, the share of its judged flags, those marked `real` or `not_defect`, that are `real`. `needs_qgis` and pending flags are left out and counted apart. Over several zones it pools the flags; it does not average the zone shares.
+_Avoid_: Hit rate, accuracy
+
 **Cleaning spec**:
 The written rules annotators follow when deciding what counts as a defect and how to correct it. It is also the methodology reported in the paper.
 _Avoid_: Guidelines, rules, SOP
