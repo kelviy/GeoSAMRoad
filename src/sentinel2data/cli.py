@@ -258,6 +258,35 @@ def change_report(
 
 
 @app.command()
+def assign_zones(
+    dataset_dir: Annotated[
+        Path,
+        typer.Option(help="Baseline dataset directory written by `generate` (metadata.parquet)"),
+    ],
+    annotator: Annotated[
+        List[str],
+        typer.Option(help="Annotator name. Repeat for each, in a fixed order: the order decides ties"),
+    ],
+    out: Annotated[Path, typer.Option(help="Output CSV, one row per zone copy an annotator cleans")],
+):
+    """Assign zones to annotators by urbanisation and road km, with one shared test zone per stratum."""
+    from sentinel2data.cleaning.assignment import assign, workload, zone_table
+
+    if len(set(annotator)) != len(annotator) or len(annotator) < 2:
+        raise typer.BadParameter("give at least two distinct --annotator names")
+    try:
+        table = assign(zone_table(dataset_dir), annotator)
+    except ValueError as err:
+        raise typer.BadParameter(str(err)) from err
+    table.round({"road_km": 2}).to_csv(out, index=False)
+
+    typer.echo(f"Wrote {out}")
+    typer.echo(workload(table).round(1).to_string())
+    shared = table.loc[table["shared"], "zone"].unique()
+    typer.echo(f"Shared zones (cleaned by everyone): {', '.join(shared)}")
+
+
+@app.command()
 def summary(
     dataset_dir: DatasetDir,
     out: Annotated[

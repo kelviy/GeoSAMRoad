@@ -87,6 +87,14 @@ _Avoid_: Suggestion, auto-fix
 An independent road layer (e.g. Overture, OpenStreetMap) used to point annotators at suspected defects. Its geometry is not copied into labels.
 _Avoid_: Reference layer, alternative labels
 
+**Owner**:
+The annotator assigned to clean a zone. The owner's copy of the zone is the one published in the dataset.
+_Avoid_: Assignee, cleaner
+
+**Shared zone**:
+A test zone that every annotator cleans in their own copy, independently, so agreement between annotators can be measured. Only its owner's copy is published.
+_Avoid_: Overlap zone, calibration zone
+
 **Review queue**:
 The ordered list of detector proposals, flags and kept tiles that an annotator works through one at a time, deciding on each. Anything that needs drawing is passed on to QGIS.
 _Avoid_: Triage, worklist
