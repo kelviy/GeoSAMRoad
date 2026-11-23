@@ -69,7 +69,7 @@ Cleaning happens per zone, not per tile. For each zone, the packager writes one 
 - **Pending detector output is not cleaning work.** [KEL-23](https://linear.app/kelvinwei/issue/KEL-23) asked why a `pending` flag used to refuse the zone, and found no reason. KEL-47 picked option A. Detector output is cheap to regenerate, so it should not need `--overwrite`. Reserving `--overwrite` for human work keeps the option meaningful. Decided flags are human work, so they still refuse the zone.
 - **The `.qgs` is hand-written XML, not built with PyQGIS.** Reason unknown, see [KEL-24](https://linear.app/kelvinwei/issue/KEL-24).
 - **Raw labels are rebuilt from the roads parquet, not read from the baseline dataset.** Reason unknown, see [KEL-25](https://linear.app/kelvinwei/issue/KEL-25).
-- **Flags carry only a location.** Overture and OSM are ODbL, and copying their geometry would make ROSA a derivative database. KEL-5 and [open directions](../cleaning/open-directions.md) record this. The `stub` detector writes only a point. This matters most for the future second-source detectors.
+- **Flags carry only a location.** Overture and OSM are ODbL, and copying their geometry would make ROSA a derivative database. KEL-5 and [open directions](../cleaning/open-directions.md) record this. The labels-only detectors write a point. The `overture` detector writes a rounded bounding box, never Overture geometry. See [detectors.md](detectors.md).
 - **The reference imagery decides position, and 2020 Sentinel-2 decides a clear temporal mismatch.** See [ADR 0001](../adr/0001-aerial-authority-with-temporal-override.md). This is why the project ships both the NGI aerial layer and the hidden Sentinel-2 RGB, and why `temporal` is a defect value.
 
 ## How detectors fit in

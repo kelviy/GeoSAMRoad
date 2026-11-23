@@ -10,19 +10,13 @@ import pytest
 import yaml
 from shapely.geometry import LineString
 
-from tests.sentinel2data import test_detect
 from tests.sentinel2data.synthetic_zone import RESOLUTION, TRAIN_ORIGIN
-from tests.sentinel2data.test_detect import DEFAULT_CONFIG, gpkg, read_flags, run_detect
-
-# The packaged zones, shared with the stub tests.
-baseline = test_detect.baseline
-packaged = test_detect.packaged
-zones = test_detect.zones
+from tests.sentinel2data.test_detect import base_config, gpkg, read_flags, run_detect
 
 
 def config_with(path, **sections):
-    """The default detector config with some keys of some sections changed."""
-    config = yaml.safe_load(DEFAULT_CONFIG.read_text())
+    """The base detector config with some keys of some sections changed."""
+    config = base_config()
     for name, values in sections.items():
         config[name].update(values)
     path.write_text(yaml.safe_dump(config))

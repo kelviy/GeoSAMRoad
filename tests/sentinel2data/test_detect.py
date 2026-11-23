@@ -6,7 +6,6 @@ inspects the ``flags`` and ``detector_runs`` layers.
 """
 
 import json
-import shutil
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -21,7 +20,6 @@ from typer.testing import CliRunner
 
 from sentinel2data.cli import app
 from tests.sentinel2data.synthetic_zone import TEST_ZONE, TRAIN_ZONE, VAL_ZONE
-from tests.sentinel2data.test_generate import run_generate
 from tests.sentinel2data.test_package_zones import run_package
 
 DEFAULT_CONFIG = (
@@ -30,34 +28,23 @@ DEFAULT_CONFIG = (
 ALL_ZONES = (TRAIN_ZONE, VAL_ZONE, TEST_ZONE)
 
 
-@pytest.fixture(scope="module")
-def baseline(shared_synthetic_zone, tmp_path_factory):
-    return run_generate(shared_synthetic_zone, tmp_path_factory.mktemp("baseline"))
-
-
-@pytest.fixture(scope="module")
-def packaged(shared_synthetic_zone, baseline, tmp_path_factory):
-    """All zones packaged once. Don't modify its files."""
-    out = tmp_path_factory.mktemp("packaged")
-    run_package(shared_synthetic_zone, baseline, out)
-    return out
-
-
-@pytest.fixture
-def zones(packaged, tmp_path):
-    """A zones folder holding only each zone's GeoPackage."""
-    out = tmp_path / "zones"
-    for zone in ALL_ZONES:
-        (out / zone).mkdir(parents=True)
-        shutil.copy(packaged / zone / f"{zone}.gpkg", out / zone)
-    return out
-
-
 def gpkg(zones, zone=TRAIN_ZONE):
     return zones / zone / f"{zone}.gpkg"
 
 
+def base_config():
+    """The default detector config with the second-source detector off: these
+    tests cover the labels-only detectors and the runner."""
+    config = yaml.safe_load(DEFAULT_CONFIG.read_text())
+    config["overture"]["enabled"] = False
+    return config
+
+
 def run_detect(zones, *args, expect_ok=True):
+    if "--detector-config" not in args:
+        config = zones.parent / "base-detectors.yaml"
+        config.write_text(yaml.safe_dump(base_config()))
+        args = (*args, "--detector-config", str(config))
     result = CliRunner().invoke(app, ["detect", "--zones-dir", str(zones), *args])
     if expect_ok:
         assert result.exit_code == 0, result.output + repr(result.exception)
@@ -65,8 +52,8 @@ def run_detect(zones, *args, expect_ok=True):
 
 
 def write_config(path, **stub):
-    """The default detector config with the ``stub`` section changed."""
-    config = yaml.safe_load(DEFAULT_CONFIG.read_text())
+    """The base config with the ``stub`` section changed."""
+    config = base_config()
     config["stub"].update(stub)
     path.write_text(yaml.safe_dump(config))
     return path
@@ -195,7 +182,7 @@ def test_each_run_is_recorded_with_the_config_it_used(zones, tmp_path):
     runs = read_runs(zones)
     assert len(runs) == 2
     configs = [json.loads(c) for c in runs["config"]]
-    assert configs[0] == yaml.safe_load(DEFAULT_CONFIG.read_text())
+    assert configs[0] == base_config()
     assert configs[1]["stub"] == {"enabled": True, "max_length_m": 20.0}
     assert all(pd.Timestamp(t).tzinfo is not None for t in runs["run_at"])
 

@@ -7,6 +7,10 @@
 * ``roads.parquet``: a WGS84 GeoParquet with the same columns as the cleaned
   CDNGI road layer that the ``roads`` command writes.
 
+``write_overture(path, roads)`` writes a second-source road layer for the
+``overture`` detector, in the Overture layer's schema. Tests build their own,
+in train zone pixels, next to the zone's labels.
+
 The train zone is ``TILE_SIZE`` px tiles in a 2x2 grid, plus a partial
 ``EDGE_STRIP`` px strip on the east and south edges that the tiler drops. In
 pixel coordinates (col, row), with r/c the tile row and column:
@@ -59,7 +63,11 @@ import rasterio
 from rasterio.transform import from_origin
 from shapely.geometry import LineString
 
-from sentinel2data.generator.config import CDNGI_ROAD_CLASSIFICATION, WGS84, flatten_classification
+from sentinel2data.generator.config import (
+    CDNGI_ROAD_CLASSIFICATION,
+    WGS84,
+    flatten_classification,
+)
 
 CRS = "EPSG:32735"  # UTM 35S, covers the Eastern Cape
 RESOLUTION = 10.0  # metres per pixel
@@ -236,3 +244,18 @@ def build_synthetic_zone(root) -> SyntheticZone:
         patch_size=PATCH_SIZE,
         cases=cases,
     )
+
+
+def train_pixels(pixels) -> LineString:
+    """A LineString in zone CRS metres from train zone pixels ``[(col, row), ...]``."""
+    return _to_metres(TRAIN_ORIGIN, pixels)
+
+
+def write_overture(path, roads):
+    """Write ``roads``, ``[(overture road_class, LineString in zone CRS metres)]``,
+    as a WGS84 GeoParquet with the Overture road layer's columns."""
+    columns = ["data_source", "road_class", "scale_class", "buffer", "geometry"]
+    rows = [("overture", road_class, "small", 4.0, g) for road_class, g in roads]
+    frame = gpd.GeoDataFrame(rows, columns=columns, geometry="geometry", crs=CRS)
+    frame.to_crs(WGS84).to_parquet(path, write_covering_bbox=True)
+    return path

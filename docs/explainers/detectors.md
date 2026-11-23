@@ -2,11 +2,11 @@
 
 How `sentinel2data.cli detect` runs the detectors over packaged zones and writes their flags into each zone GeoPackage.
 
-> **Status, 2026-11-23.** KEL-48 built the runner and the first detector, `stub`. KEL-49 made re-runs idempotent. KEL-50 added `duplicate` and `crossing`, which flag only. The gap and second-source detectors come later, as does the review queue. [zone-cleaning.md](zone-cleaning.md) describes the zone package itself.
+> **Status, 2026-11-23.** KEL-48 built the runner and the first detector, `stub`. KEL-49 made re-runs idempotent. KEL-50 added `duplicate` and `crossing`, which flag only. KEL-51 added `overture`, the second-source detector. The gap detector comes later, as does the review queue. [zone-cleaning.md](zone-cleaning.md) describes the zone package itself.
 
 ## Core idea
 
-A detector is a model-agnostic check that reads only the zone GeoPackage and one config file, and places flags at suspected defects. `detect` runs every enabled detector on each zone and writes the flags into the zone's `flags` layer with `decision = pending`, for an annotator to decide on. Detectors place flags only inside or touching `kept` tiles, and they ignore road ends that dangle only because the zone edge cut the road. Re-running `detect` never loses work. Decided flags never change, and a re-run only adds or removes pending flags. Each run is recorded in the GeoPackage with the full config it used.
+A detector is a model-agnostic check that reads only the zone GeoPackage and one config file, and places flags at suspected defects. The second-source detector also reads the Overture road layer that the config names. `detect` runs every enabled detector on each zone and writes the flags into the zone's `flags` layer with `decision = pending`, for an annotator to decide on. Detectors place flags only inside or touching `kept` tiles, and they ignore road ends that dangle only because the zone edge cut the road. Re-running `detect` never loses work. Decided flags never change, and a re-run only adds or removes pending flags. Each run is recorded in the GeoPackage with the full config it used.
 
 ## How it works
 
@@ -72,12 +72,27 @@ An unnoded crossing is a point where two roads cross and the point is not a vert
 - **Flag key and `raw_ids`.** `crossing:crossing:<raw_ids>@<x>,<y>`, where `raw_ids` are the `raw_id` values of both roads.
 - **No thresholds.** The `crossing` config section has only `enabled`.
 
+## The overture detector
+
+`overture` compares the labels with Overture roads. It places a `missing?` flag where Overture has a road and the labels don't, and a `phantom?` flag on a stretch of label with no Overture road nearby. A `phantom?` flag can also mean the label is misaligned. Both flags are areas.
+
+- **Reading Overture.** The detector reads only the rows whose bbox meets the zone bounding box grown by the match tolerance. The bbox covering column of `overture_dense.parquet` makes this a 0.5 s read. The rows are reprojected to the zone CRS. The layer must be WGS84, like every layer the `roads` command writes. `overture.path` names it, and `~` is expanded. A missing file stops the command before any zone runs, unless the detector is disabled.
+- **Samples.** Every label row and every Overture row is sampled at evenly spaced points at most `sample_spacing_m` apart, 5 m by default, ends included. Each sample stands for the line around it, up to half the way to each neighbour, so the samples of a row add up to its length.
+- **Matching.** A sample is matched when the other source has a line within `match_tolerance_m`, 15 m by default. One STRtree `dwithin` query per side does this. Overture samples are matched against every label road. Label samples are matched against Overture roads of every class.
+- **Scope.** Only unmatched samples inside or touching a `kept` tile count. Matching still uses every road, including roads in dropped tiles.
+- **Stretches.** Unmatched samples less than 1.5 spacings apart, 7.5 m by default, belong to one stretch. The detector takes the connected components of that neighbour graph, so a stretch continues across row ends and junctions. Its length is the sum of its samples' shares.
+- **Minimum length.** A `missing?` stretch shorter than `missing_min_length_m`, 100 m by default, gets no flag. For `phantom?`, the minimum is `phantom_min_length_m`, 50 m.
+- **Class toggles.** `missing_classes` maps each Overture `road_class` to on or off. Only roads of a class that is on produce `missing?` flags. A class not listed is off. `track` is off by default. `phantom?` ignores the toggles.
+- **The flag area.** The flag is the bounding box of the stretch's samples, grown by the match tolerance and rounded outwards to the metre. It is a single-part rectangle: never a line and never a copy of Overture vertices.
+- **Flag key and `raw_ids`.** `overture:<type>:<raw_ids>@<x>,<y>`, from the centroid of the area. A `phantom?` flag's `raw_ids` are the label rows its samples were taken from. A `missing?` flag has none.
+- **`source`.** `overture`.
+
 ## Details that matter
 
 - **The config is the only place for thresholds.** The dataclasses in `detectors.py` have no defaults. Every value comes from the YAML, so the file the run records is the whole truth about that run.
 - **`detector_runs` records every run,** even one with every detector disabled.
 - **The counts are what the detectors found this run.** A found flag that matches a stored flag, or another found flag, is counted but not written again.
-- **The edge-cut rule is for stubs only.** A road the zone edge cut is still a real duplicate or a real crossing inside the zone, so `duplicate` and `crossing` don't skip it.
+- **The edge-cut rule is for stubs only.** A road the zone edge cut is still a real duplicate or a real crossing inside the zone, so `duplicate` and `crossing` don't skip it. `overture` measures only the part of a stretch inside the kept tiles, so the cut doesn't matter to it.
 - **`deleted` and `proposed` rows are not roads.** A pending gap connector does not connect anything for the stub detector.
 - **Multi-part label geometries are split** into one road per part, all with the same labels fid.
 - **Flags are 2D.** Labels from a real zone are `LineString Z`. `load_zone` drops the Z, so every flag point is 2D.
@@ -91,6 +106,10 @@ An unnoded crossing is a point where two roads cross and the point is not a vert
 - **Vectorised STRtree queries.** The KEL-11 dry run found that per-segment loops with geometry unions don't finish on dense urban zones. With these queries, `detect` with all three detectors runs all 60 zones in 57 s. It places 1,532 stubs, 254 duplicates and 119 crossings. The densest zone, CapeTown_Fynbos_-33p96_18p61_Urban, takes 10 s.
 - **Duplicates and crossings are flag only.** KEL-11 user stories 4 and 5. Parallel carriageways and bridges have the same geometry as these defects, so an annotator decides.
 - **Shared vertices, not `crosses` alone.** The KEL-11 dry run counted 1,496 crossings over the 60 zones. That was every `crosses` pair. Of the 1,381 crossing points inside kept tiles, 1,262 are vertices of both roads: roads stored as one row through a junction. Only the other 119 are unnoded.
+- **Overture flags carry only an area.** Overture is ODbL, and copying its geometry would make ROSA a derivative database. KEL-5 and KEL-51 record this. A bounding box grown and rounded outwards marks where to look without reproducing the road. Area flags must be single-part polygons, because that is what the QGIS project's polygon flag layer holds.
+- **Sampled `dwithin` matching.** The KEL-11 dry run found that sampling every 5 m and querying an STRtree with `dwithin` works on every zone. On the 60 zones, 16.1% of label length in kept tiles has no Overture road within 15 m, and 31.6% of Overture length has no label. The dry run's 40% for Overture included tracks. `overture` alone runs all 60 zones in 127 s at 2.3 GB peak memory. It places 15,877 `missing?` and 21,371 `phantom?` flags with the default config.
+- **Tracks are off.** Faint vehicle tracks are not roads under the ROSA definition. CDNGI `Track` is in the ignored section of `CDNGI_ROAD_CLASSIFICATION`, so an Overture track with no label is not a missing road. A label still counts as matched by a track, because Overture maps a road there.
+- **Overture only, not OSM.** KEL-51 narrowed KEL-11: Overture against CDNGI is the comparison that matters, so OSM and the toggle for "one or both sources must agree" are out.
 - **Merge by key, keep decided flags.** KEL-11 user story 15 asks that re-running on a partly reviewed zone never wipes work, so the team lead can tune thresholds mid-cleaning. KEL-49 also keeps pending flags that are found again in place, so their fids are stable across re-runs.
 
 ## Weak spots and ideas
@@ -108,6 +127,10 @@ An unnoded crossing is a point where two roads cross and the point is not a vert
 - **Short duplicates are missed.** By design. An exact copy of a row shorter than 20 m gets no flag.
 - **Carriageways farther apart than 10 m are not flagged.** Observed. The synthetic `parallel_carriageways` pair is 20 m apart and gets a flag only with a wider distance. The test uses 25 m. Suspected: real dual carriageways wider than 10 m are not flagged at the default either. Their spacing on the 60 zones was not measured.
 - **The shared-vertex check is exact.** Suspected. A junction drawn with two vertices a few millimetres apart counts as unnoded. The 119 crossings on the 60 zones were not checked for this.
+- **Big unmatched networks give huge flags.** Observed. Because a stretch continues across junctions, a road network Overture lacks entirely becomes one flag. On the 60 zones, 173 of 37,248 flags are over 500 ha, and 44 are bigger than a tile, which is 2,621 ha. The largest is a 19,717 ha `phantom?` in AzonalVegetation_-30p63_20p09_Rural. The median flag is 2.0 ha for `missing?` and 1.2 ha for `phantom?`. Idea: split a stretch at tile edges after the length check, so no flag is bigger than about a tile.
+- **The flag volume is high.** Observed. 37,248 flags over 60 zones, against about 1,900 from the label-only detectors. The minimum lengths and class toggles are provisional and need tuning before annotators see this queue. `phantom?` flags outnumber `missing?` flags, although 16% of label length is unmatched against 32% of Overture length. Suspected: many short unmatched stretches between 50 m and 100 m.
+- **A `phantom?` key changes when a road in the stretch changes.** Suspected. A big stretch's `raw_ids` lists many rows. Editing any of them can move the area or change `raw_ids`, so a decided `phantom?` flag gets a pending twin more often than a stub does.
+- **The tolerance is the same for every class.** Suspected. 15 m may be too tight for wide freeways, where Overture draws the centreline and CDNGI each carriageway, and too loose in dense grids, where a street can be matched by its neighbour 15 m away.
 
 ## Code map
 
@@ -117,9 +140,11 @@ An unnoded crossing is a point where two roads cross and the point is not a vert
 - `cleaning/detectors.py`, `Zone`, `DETECTORS`: what a detector sees, and the name-to-detector registry. The registry key must match a `DetectorConfig` field.
 - `cleaning/detectors.py`, `branches`, `dead_ends` and `stub_flags`: the stub detector.
 - `cleaning/detectors.py`, `duplicate_flags` and `crossing_flags`: the flag-only detectors. `_flags_from_labels` builds the flag rows for all three.
+- `cleaning/detectors.py`, `overture_flags`: the second-source detector. `_read_overture`, `_sample`, `_unmatched_stretches` and `_flag_area` do the read, sampling, grouping and area.
 - `cleaning/detectors.py`, `flag_key`: builds a flag key. Every detector uses it.
 - `cleaning/contract.py`, `is_pending_detector_output`: the rule that the runner and the packager share.
 - `cleaning/detect.py`, `detect_zone`: runs one zone, with the open-file and schema checks.
 - `cleaning/detect.py`, `load_zone`, `_as_flag_rows`, `_merge_flags` and `_record_run`: GeoPackage reads and writes. `_as_flag_rows` sets `decision = pending`; `_merge_flags` applies the re-run rule.
 - `tests/sentinel2data/test_detect.py`: end-to-end tests of the runner and `stub` on the packaged synthetic zone.
 - `tests/sentinel2data/test_geometry_detectors.py`: end-to-end tests of `duplicate` and `crossing`.
+- `tests/sentinel2data/test_detect_overture.py`: end-to-end tests of `overture`, each with an Overture layer written by `synthetic_zone.write_overture`.

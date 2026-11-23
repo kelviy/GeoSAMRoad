@@ -12,13 +12,17 @@ import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import get_type_hints
+from typing import get_args, get_origin, get_type_hints
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
 import yaml
+from scipy.sparse import coo_array
+from scipy.sparse.csgraph import connected_components
+
+from sentinel2data.generator.config import WGS84
 
 DEFAULT_CONFIG_PATH = Path(__file__).parents[1] / "configs" / "detectors.yaml"
 
@@ -27,6 +31,22 @@ DEFAULT_CONFIG_PATH = Path(__file__).parents[1] / "configs" / "detectors.yaml"
 class StubConfig:
     enabled: bool
     max_length_m: float
+
+
+@dataclass(frozen=True)
+class OvertureConfig:
+    enabled: bool
+    path: str
+    match_tolerance_m: float
+    sample_spacing_m: float
+    missing_min_length_m: float
+    phantom_min_length_m: float
+    # Overture road_class -> whether its roads produce ``missing?`` flags.
+    missing_classes: dict[str, bool]
+
+    @property
+    def roads_path(self) -> Path:
+        return Path(self.path).expanduser()
 
 
 @dataclass(frozen=True)
@@ -51,10 +71,15 @@ class DetectorConfig:
     stub: StubConfig
     duplicate: DuplicateConfig
     crossing: CrossingConfig
+    overture: OvertureConfig
 
     @classmethod
     def load(cls, path) -> "DetectorConfig":
-        return _parse(cls, yaml.safe_load(Path(path).read_text()), str(path))
+        config = _parse(cls, yaml.safe_load(Path(path).read_text()), str(path))
+        overture = config.overture
+        if overture.enabled and not overture.roads_path.is_file():
+            raise ValueError(f"{path}: overture.path: no file at {overture.roads_path}")
+        return config
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)
@@ -75,8 +100,10 @@ def _parse(cls, raw, where):
         value, key = raw[name], f"{where}: {name}"
         if dataclasses.is_dataclass(kind):
             values[name] = _parse(kind, value, key)
-        elif kind is bool and isinstance(value, bool):
+        elif kind in (bool, str) and type(value) is kind:
             values[name] = value
+        elif get_origin(kind) is dict:
+            values[name] = _parse_mapping(get_args(kind), value, key)
         elif (
             kind is float
             and isinstance(value, (int, float))
@@ -86,6 +113,18 @@ def _parse(cls, raw, where):
         else:
             raise ValueError(f"{key}: expected {kind.__name__}, got {value!r}")
     return cls(**values)
+
+
+def _parse_mapping(kinds, raw, where):
+    key_kind, value_kind = kinds
+    if not isinstance(raw, dict) or not all(
+        isinstance(k, key_kind) and isinstance(v, value_kind) for k, v in raw.items()
+    ):
+        raise ValueError(
+            f"{where}: expected a mapping of {key_kind.__name__} to "
+            f"{value_kind.__name__}, got {raw!r}"
+        )
+    return dict(raw)
 
 
 @dataclass(frozen=True)
@@ -248,18 +287,26 @@ def crossing_flags(zone: Zone, config: DetectorConfig) -> gpd.GeoDataFrame:
 def _flags_from_labels(flag_type, points, raw_id_groups, crs) -> gpd.GeoDataFrame:
     """Flags of ``flag_type`` from the labels, one per point. The detector has
     the same name as the flag type."""
+    return _flag_rows(flag_type, flag_type, "labels", points, raw_id_groups, crs)
+
+
+def _flag_rows(
+    detector, flag_type, source, geometries, raw_id_groups, crs
+) -> gpd.GeoDataFrame:
+    """One flag per geometry, keyed at its point or, for an area, its centroid."""
     flag_raw_ids = [_join_raw_ids(ids) for ids in raw_id_groups]
+    anchors = [shapely.centroid(g) for g in geometries]
     return gpd.GeoDataFrame(
         {
             "flag_key": [
-                flag_key(flag_type, flag_type, r, p)
-                for r, p in zip(flag_raw_ids, points)
+                flag_key(detector, flag_type, r, p)
+                for r, p in zip(flag_raw_ids, anchors)
             ],
             "type": flag_type,
-            "source": "labels",
+            "source": source,
             "raw_ids": pd.array(flag_raw_ids, dtype="string"),
         },
-        geometry=gpd.GeoSeries(points, crs=crs),
+        geometry=gpd.GeoSeries(list(geometries), crs=crs),
     )
 
 
@@ -280,6 +327,137 @@ def flag_key(detector, flag_type, raw_ids, point) -> str:
     return f"{detector}:{flag_type}:{raw_ids or ''}@{point.x:.0f},{point.y:.0f}"
 
 
+def overture_flags(zone: Zone, config: DetectorConfig) -> gpd.GeoDataFrame:
+    """``missing?`` and ``phantom?`` flags where the labels and Overture disagree.
+
+    Both line sets are sampled every ``sample_spacing_m`` at most. A sample is
+    matched when the other set has a line within ``match_tolerance_m``.
+    Unmatched samples inside the kept tiles are grouped into stretches, and a
+    stretch at least its type's minimum length long gets one flag:
+    ``missing?`` for Overture roads of a class switched on in
+    ``missing_classes``, ``phantom?`` for labels, matched against Overture
+    roads of every class.
+
+    A flag is an area: the stretch's bounding box grown by the tolerance and
+    rounded outwards to the metre. It never holds Overture geometry, because
+    Overture is ODbL and copying it would make ROSA a derivative database.
+    """
+    settings = config.overture
+    tolerance = settings.match_tolerance_m
+    overture = _read_overture(settings.roads_path, zone, tolerance)
+    labels = zone.roads.geometry.to_numpy()
+    overture_lines = overture.geometry.to_numpy()
+    switched_on = [c for c, on in settings.missing_classes.items() if on]
+    missing_lines = overture_lines[
+        np.isin(np.asarray(overture["road_class"]), switched_on)
+    ]
+    # Per line, the raw_id a flag on it names. Overture lines name none.
+    label_raw_ids = zone.roads["raw_id"].to_numpy()
+    no_raw_ids = np.full(len(missing_lines), None)
+
+    found = []
+    for flag_type, lines, line_raw_ids, others, min_length in (
+        ("missing?", missing_lines, no_raw_ids, labels, settings.missing_min_length_m),
+        (
+            "phantom?",
+            labels,
+            label_raw_ids,
+            overture_lines,
+            settings.phantom_min_length_m,
+        ),
+    ):
+        stretches = list(
+            _unmatched_stretches(
+                zone, lines, others, settings.sample_spacing_m, tolerance, min_length
+            )
+        )
+        found.append(
+            _flag_rows(
+                "overture",
+                flag_type,
+                "overture",
+                [_flag_area(samples, tolerance) for samples, _ in stretches],
+                [line_raw_ids[rows] for _, rows in stretches],
+                zone.roads.crs,
+            )
+        )
+    return gpd.GeoDataFrame(pd.concat(found, ignore_index=True), crs=zone.roads.crs)
+
+
+def _read_overture(path, zone: Zone, margin):
+    """The Overture roads around the zone, in the zone CRS, one 2D LineString each.
+
+    The layer is a WGS84 GeoParquet with a bbox covering column, like every
+    road layer the ``roads`` command writes.
+    """
+    crs = zone.roads.crs
+    assert crs is not None, "zone labels always have a CRS"
+    around = gpd.GeoSeries([shapely.envelope(zone.boundary).buffer(margin)], crs=crs)
+    bbox = tuple(around.to_crs(WGS84).total_bounds)
+    roads = gpd.read_parquet(path, bbox=bbox).to_crs(crs).explode(index_parts=False)
+    lines = shapely.force_2d(roads.geometry.to_numpy())
+    return roads.set_geometry(lines, crs=crs)[~shapely.is_empty(lines)]
+
+
+def _unmatched_stretches(zone, lines, others, spacing, tolerance, min_length):
+    """Per stretch of ``lines`` with no line of ``others`` within the tolerance,
+    its sample points and the positions in ``lines`` they lie on.
+
+    A sample stands for the line around it, half the way to each neighbour, so
+    a stretch's length is its samples' share summed. Unmatched samples within
+    1.5 spacings of each other are one stretch, across line ends and junctions.
+    """
+    owner, points, share = _sample(lines, spacing)
+    near, _ = shapely.STRtree(others).query(
+        points, predicate="dwithin", distance=tolerance
+    )
+    unmatched = np.ones(len(points), dtype=bool)
+    unmatched[near] = False
+    unmatched &= zone.in_kept_tiles(points)
+    points, owner, share = points[unmatched], owner[unmatched], share[unmatched]
+
+    a, b = shapely.STRtree(points).query(
+        points, predicate="dwithin", distance=1.5 * spacing
+    )
+    n = len(points)
+    graph = coo_array((np.ones(len(a)), (a, b)), shape=(n, n))
+    _, stretch = connected_components(graph, directed=False)
+    length = np.bincount(stretch, weights=share, minlength=n)
+    for s in np.flatnonzero(length >= min_length):
+        members = stretch == s
+        yield points[members], owner[members]
+
+
+def _sample(lines, spacing):
+    """Points along each line, evenly spaced at most ``spacing`` apart, ends
+    included. Returns each point's line position, the points, and the length of
+    line each point stands for."""
+    lines = np.asarray(lines)
+    lengths = shapely.length(lines)
+    counts = np.ceil(lengths / spacing).astype(int) + 1
+    counts[lengths == 0] = 1
+    owner = np.repeat(np.arange(len(lines)), counts)
+    first = np.repeat(np.cumsum(counts) - counts, counts)
+    k = np.arange(counts.sum()) - first
+    step = np.divide(lengths, counts - 1, out=np.zeros_like(lengths), where=counts > 1)
+    points = shapely.line_interpolate_point(lines[owner], k * step[owner])
+    end = (k == 0) | (k == counts[owner] - 1)
+    share = np.where(end, step[owner] / 2, step[owner])
+    return owner, points, share
+
+
+def _flag_area(points, margin):
+    """The bounding box of ``points``, grown by ``margin`` and rounded outwards
+    to the metre."""
+    minx, miny, maxx, maxy = shapely.total_bounds(points)
+    return shapely.box(
+        np.floor(minx - margin),
+        np.floor(miny - margin),
+        np.ceil(maxx + margin),
+        np.ceil(maxy + margin),
+    )
+
+
 Detector = Callable[[Zone, DetectorConfig], gpd.GeoDataFrame]
 
 # Detector name -> detector. The name is also its config section and the
@@ -288,4 +466,5 @@ DETECTORS: dict[str, Detector] = {
     "stub": stub_flags,
     "duplicate": duplicate_flags,
     "crossing": crossing_flags,
+    "overture": overture_flags,
 }

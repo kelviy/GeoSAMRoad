@@ -15,6 +15,40 @@ stub:
   enabled: true
   max_length_m: 30.0
 
+# Second source: compare the labels with Overture roads.
+#   missing?  a stretch where Overture has a road and the labels don't.
+#   phantom?  a stretch of label with no Overture road nearby.
+# Flags are areas only, never Overture geometry (Overture is ODbL).
+overture:
+  enabled: true
+  # GeoParquet with a road_class column; `~` is expanded.
+  path: ~/Documents/RoadVectorData/clean_road_data/overture_dense.parquet
+  # A sample within this distance of a line of the other source is matched.
+  match_tolerance_m: 15.0
+  # Both line sets are sampled at most this far apart.
+  sample_spacing_m: 5.0
+  # Shorter unmatched stretches get no flag.
+  missing_min_length_m: 100.0
+  phantom_min_length_m: 50.0
+  # Overture road classes whose unmatched roads get missing? flags. Labels are
+  # matched against every class. A class not listed here is off.
+  missing_classes:
+    motorway: true
+    motorway_link: true
+    trunk: true
+    trunk_link: true
+    primary: true
+    primary_link: true
+    secondary: true
+    secondary_link: true
+    tertiary: true
+    tertiary_link: true
+    residential: true
+    living_street: true
+    unclassified: true
+    # Faint vehicle tracks are not roads under the ROSA definition.
+    track: false
+
 # Duplicate, flag only: a road row with at least min_overlap_share of its
 # length within max_distance_m of one other row. Rows shorter than
 # min_length_m are skipped: near a junction most of a short row lies within

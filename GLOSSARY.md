@@ -75,6 +75,18 @@ _Avoid_: Overlap, double
 A flag type: two roads that cross at a point that is not a vertex of both, so the road graph has no junction there. It is a flag only, because bridges and underpasses match it too.
 _Avoid_: Intersection, X-crossing
 
+**Missing?**:
+A flag type: a stretch where the second source has a road and the labels have none within the match tolerance, provisionally 100 m or longer. The question mark says the second source may be wrong.
+_Avoid_: Missing road (that is the defect, once an annotator confirms it)
+
+**Phantom?**:
+A flag type: a stretch of label with no second-source road within the match tolerance, provisionally 50 m or longer. It may be a phantom road or a misaligned one.
+_Avoid_: Phantom road (that is the defect, once an annotator confirms it)
+
+**Stretch**:
+A run of one source's roads with no road of the other source within the match tolerance. One `missing?` or `phantom?` flag marks each stretch long enough. A stretch continues across junctions.
+_Avoid_: Segment, gap
+
 **Flag key**:
 A flag's identity across detector runs: the same suspected defect gets the same key every run, so a re-run can find the flag it placed before.
 _Avoid_: Flag id, fid
