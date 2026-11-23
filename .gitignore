@@ -20,3 +20,5 @@ save/
 */.DS_Store
 wandb/*
 .env
+# MkDocs build output
+site/

@@ -13,6 +13,14 @@ Features are documented by **explainers** in `docs/explainers/`. An explainer is
 
 When a change alters how a feature behaves, update its explainer in the same change. When you substantially change a feature that has none, write one. Read `docs/explainers/README.md` for the outline and rules before writing or editing one, and run the `pstack:unslop` skill over the explainer before you finish.
 
+## Docs site
+
+`docs/` is published to <https://kelviy.github.io/GeoSAMRoad/> with MkDocs Material (`mkdocs.yml`). Every push to `semi-automation` builds and deploys it. Guides in `docs/guides/` tell teammates how to do the work. Explainers say how it works.
+
+When a change alters a command, file or workflow that a guide describes, update the guide in the same change. A new page goes in the `nav` of `mkdocs.yml`.
+
+Before finishing any docs change, run `.venv/bin/mkdocs build --strict`. It fails on broken links, and its hook `tools/mkdocs_sensitive_scan.py` fails on local paths, Google Drive or Docs links and credentials. The site is public. Write `<repo>` or `<data-dir>` for paths, "Ask kelviy for the link" for shared links, and use no real names except `kelviy`. Install the tools with `uv pip install -p .venv/bin/python mkdocs mkdocs-material`, never `uv sync`.
+
 ## Agent skills
 
 ### Issue tracker

@@ -1,0 +1,96 @@
+site_name: GeoSAMRoad
+site_description: How to clean the ROSA road labels, and how the pipeline works.
+site_url: https://kelviy.github.io/GeoSAMRoad/
+repo_url: https://github.com/kelviy/GeoSAMRoad
+repo_name: kelviy/GeoSAMRoad
+edit_uri: ""
+
+docs_dir: docs
+strict: true
+exclude_docs: |
+  agents/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.keys
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+validation:
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+nav:
+  - Home: index.md
+  - Guides:
+      - guides/setup.md
+      - guides/data-and-files.md
+      - guides/claim-and-download.md
+      - guides/review-with-plugin.md
+      - guides/clean-by-hand.md
+      - guides/hand-back.md
+      - guides/assemble-and-retile.md
+      - guides/change-detector-or-packager.md
+  - How it works:
+      - explainers/README.md
+      - explainers/overview.md
+      - Cleaning:
+          - explainers/zone-cleaning.md
+          - explainers/detectors.md
+          - explainers/review-queue.md
+          - explainers/review-plugin.md
+          - explainers/zone-assignment.md
+          - cleaning/open-directions.md
+      - Data:
+          - explainers/imagery-fetch.md
+          - explainers/road-vectors.md
+          - explainers/dataset-tiling.md
+          - explainers/dataset-stats.md
+      - Models:
+          - explainers/training-data.md
+          - explainers/models.md
+          - explainers/training.md
+          - explainers/inference.md
+          - explainers/mask-postprocessing.md
+          - explainers/evaluation.md
+          - explainers/web-app.md
+      - Decisions:
+          - adr/0001-aerial-authority-with-temporal-override.md
+  - Glossary: glossary.md
+
+hooks:
+  - tools/mkdocs_sensitive_scan.py
