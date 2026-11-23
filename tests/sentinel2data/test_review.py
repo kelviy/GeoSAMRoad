@@ -15,6 +15,7 @@ import pandas as pd
 import pyogrio
 import pytest
 import shapely
+import yaml
 from typer.testing import CliRunner
 
 from sentinel2data.cleaning import review
@@ -22,6 +23,7 @@ from sentinel2data.cleaning.contract import FLAG_FIELDS
 from sentinel2data.cli import app
 from tests.sentinel2data.synthetic_zone import TRAIN_ZONE
 from tests.sentinel2data.test_detect import (
+    base_config,
     gpkg,
     raw_id_of,
     run_detect,
@@ -224,14 +226,15 @@ def test_not_defect_and_needs_qgis_change_no_label(
     assert read(zone, "flags").loc[fid, "decision"] == decision
 
 
-def test_a_decided_flag_is_not_decided_again(zone):
+def test_the_same_decision_again_changes_nothing(zone):
     fid = flag_of_type(zone, "stub").fid
-    review.decide_flag(zone, fid, "not_defect", annotator="Thandi")
-    with pytest.raises(review.FlagAlreadyDecided):
-        review.decide_flag(zone, fid, "real", annotator="Sipho")
-    stored = read(zone, "flags").loc[fid]
-    assert (stored["decision"], stored["annotator"]) == ("not_defect", "Thandi")
-    assert not (read(zone, "labels")["status"] == "deleted").any()
+    review.decide_flag(zone, fid, "real", annotator="Thandi")
+    labels = read(zone, "labels")
+
+    assert review.decide_flag(zone, fid, "real", annotator="Sipho") == ()
+
+    assert_same_rows(read(zone, "labels"), labels)
+    assert read(zone, "flags").loc[fid, "annotator"] == "Thandi"
 
 
 @pytest.mark.parametrize(
@@ -368,3 +371,248 @@ def test_real_leaves_a_row_already_deleted_as_it_is(zone, zones, shared_syntheti
     stored = read(zone, "labels").loc[last_fid]
     assert last_fid not in deleted
     assert (stored["defect"], stored["annotator"]) == ("misalignment", "Sipho")
+
+
+def test_changing_real_to_not_defect_on_a_stub_restores_its_label_row(zone):
+    fid = flag_of_type(zone, "stub").fid
+    before = read(zone, "labels")
+    review.decide_flag(zone, fid, "real", annotator="Thandi")
+
+    review.decide_flag(zone, fid, "not_defect", annotator="Sipho")
+
+    assert_same_rows(read(zone, "labels"), before)
+    stored = read(zone, "flags").loc[fid]
+    assert (stored["decision"], stored["annotator"]) == ("not_defect", "Sipho")
+
+
+def test_changing_a_real_stub_restores_a_modified_row_with_its_own_defect(
+    zone, zones, shared_synthetic_zone
+):
+    stub_road = shared_synthetic_zone.cases["dangling_stub"].geometries[1]
+    labels = read(zone, "labels")
+    (row,) = labels.index[labels["raw_id"] == raw_id_of(zones, stub_road)]
+    for column, value in [
+        ("status", "modified"),
+        ("defect", "misalignment"),
+        ("annotator", "Sipho"),
+    ]:
+        update_in_place(zones, "labels", column, value, [int(row)])
+    before = read(zone, "labels")
+    fid = flag_of_type(zone, "stub").fid
+
+    assert review.decide_flag(zone, fid, "real", annotator="Thandi") == (row,)
+    review.decide_flag(zone, fid, "needs_qgis", annotator="Thandi")
+
+    assert_same_rows(read(zone, "labels"), before)
+
+
+def test_changing_not_defect_to_real_applies_the_deletion(zone):
+    fid = flag_of_type(zone, "stub").fid
+    review.decide_flag(zone, fid, "not_defect", annotator="Thandi")
+
+    deleted = review.decide_flag(zone, fid, "real", annotator="Sipho")
+
+    labels = read(zone, "labels")
+    assert labels.index[labels["status"] == "deleted"].tolist() == list(deleted)
+    assert len(deleted) == 1
+    assert labels.loc[deleted[0], ["defect", "annotator"]].tolist() == ["stub", "Sipho"]
+    assert read(zone, "flags").loc[fid, "annotator"] == "Sipho"
+
+
+def test_undo_keeps_a_row_changed_in_qgis_after_the_deletion(zone, zones):
+    fid = flag_of_type(zone, "stub").fid
+    (row,) = review.decide_flag(zone, fid, "real", annotator="Thandi")
+    # Restored by hand in QGIS, then redrawn.
+    update_in_place(zones, "labels", "status", "modified", [int(row)])
+    update_in_place(zones, "labels", "defect", "misalignment", [int(row)])
+
+    review.decide_flag(zone, fid, "not_defect", annotator="Thandi")
+
+    stored = read(zone, "labels").loc[row]
+    assert (stored["status"], stored["defect"]) == ("modified", "misalignment")
+
+
+@pytest.mark.parametrize(
+    ("queue_filter", "wanted"),
+    [
+        (review.QueueFilter(kind="proposal"), lambda f: f["proposal_fid"].notna()),
+        (review.QueueFilter(kind="flag"), lambda f: f["proposal_fid"].isna()),
+        (review.QueueFilter(flag_type="stub"), lambda f: f["type"] == "stub"),
+        (review.QueueFilter(source="overture"), lambda f: f["source"] == "overture"),
+        (
+            review.QueueFilter(kind="flag", source="labels"),
+            lambda f: f["proposal_fid"].isna() & (f["source"] == "labels"),
+        ),
+    ],
+)
+def test_a_filter_keeps_exactly_its_flags_in_the_default_order(
+    zone, zones, shared_synthetic_zone, queue_filter, wanted
+):
+    (long, long_id), (last, last_id) = split_dead_end(zones, shared_synthetic_zone)
+    add_phantom_flag(zone, phantom_area(long, last), [long_id, last_id])
+    flags = read(zone, "flags")
+    expected = set(flags.index[wanted(flags)])
+    assert expected and expected != set(flags.index)
+
+    filtered = review.build_queue(zone, queue_filter)
+
+    everything = review.build_queue(zone)
+    assert filtered == [i for i in everything if i.fid in expected and i.kind != "tile"]
+
+
+def test_the_tile_filter_keeps_only_the_kept_tiles(zone):
+    tiles = review.build_queue(zone, review.QueueFilter(kind="tile"))
+    assert tiles == kept_tiles(zone)
+    assert len(tiles) == 2
+
+
+def test_an_unknown_kind_flag_type_or_source_is_refused():
+    with pytest.raises(ValueError, match="kind"):
+        review.QueueFilter(kind="proposals")
+    with pytest.raises(ValueError, match="flag type"):
+        review.QueueFilter(flag_type="phantom")
+    with pytest.raises(ValueError, match="source"):
+        review.QueueFilter(source="osm")
+
+
+def detect_with_stub_hidden(zones):
+    config = base_config()
+    config["stub"]["hidden"] = True
+    path = zones.parent / "stub-hidden.yaml"
+    path.write_text(yaml.safe_dump(config))
+    run_detect(zones, "--detector-config", str(path))
+    return gpkg(zones)
+
+
+def test_a_hidden_detectors_flags_leave_the_queue_and_progress_only(zones):
+    zone = detect_with_stub_hidden(zones)
+
+    flags = read(zone, "flags")
+    stubs = set(flags.index[flags["detector"] == "stub"])
+    assert stubs  # still in the GeoPackage
+    queue = review.build_queue(zone)
+    assert not stubs & {i.fid for i in queue if i.kind != "tile"}
+    assert len(queue) == len(flags) - len(stubs) + 2
+    assert review.progress(zone).flags_total == len(flags) - len(stubs)
+    assert review.build_queue(zone, review.QueueFilter(flag_type="stub")) == []
+
+
+def test_showing_a_detector_again_brings_its_flags_back(zones):
+    zone = detect_with_stub_hidden(zones)
+    run_detect(zones)
+    assert review.progress(zone).flags_total == len(read(zone, "flags"))
+
+
+def test_going_back_steps_to_the_previous_item_and_reopening_resumes_there(
+    zone, tmp_path
+):
+    queue = review.build_queue(zone)
+    for item in queue[:3]:
+        review.decide_flag(zone, item.fid, "not_defect", annotator="Thandi")
+    queue = review.build_queue(zone)
+    assert review.current_item(zone) == queue[3]
+
+    assert review.go_back(zone) == queue[2]
+    assert review.go_back(zone) == queue[1]
+
+    copy = shutil.copy(zone, tmp_path / "reopened.gpkg")
+    assert review.current_item(copy) == queue[1]
+    assert review.go_forward(copy) == queue[2]
+    assert review.current_item(copy) == queue[2]
+
+
+def test_changing_a_decision_after_going_back_returns_to_the_first_item_not_done(
+    zone,
+):
+    queue = review.build_queue(zone)
+    review.decide_flag(zone, queue[0].fid, "real", annotator="Thandi")
+    review.decide_flag(zone, queue[1].fid, "real", annotator="Thandi")
+    queue = review.build_queue(zone)
+
+    assert review.go_back(zone) == queue[1]
+    review.decide_flag(zone, queue[1].fid, "not_defect", annotator="Sipho")
+
+    assert review.current_item(zone) == queue[2]
+
+
+def test_going_back_from_the_first_item_or_forward_from_the_last_stays_put(zone):
+    queue = review.build_queue(zone)
+    assert review.go_back(zone) is None
+    assert review.current_item(zone) == queue[0]
+
+    for item in queue:
+        if item.kind == "tile":
+            review.review_tile(zone, item.fid, annotator="Thandi")
+        else:
+            review.decide_flag(zone, item.fid, "not_defect", annotator="Thandi")
+    assert review.current_item(zone) is None
+    queue = review.build_queue(zone)
+    assert review.go_back(zone) == queue[-1]
+    assert review.go_forward(zone) is None
+    assert review.current_item(zone) == queue[-1]
+
+
+def test_going_back_under_a_filter_steps_through_the_filtered_queue(zone):
+    tiles = review.QueueFilter(kind="tile")
+    first, second = kept_tiles(zone)
+    review.review_tile(zone, first.fid, annotator="Thandi")
+    review.review_tile(zone, second.fid, annotator="Thandi")
+    first, second = kept_tiles(zone)
+
+    assert review.go_back(zone, tiles) == second
+    assert review.go_back(zone, tiles) == first
+    # Unfiltered, the queue starts at its first flag, still pending; the
+    # stored tile is in this queue too, so it stays current.
+    assert review.current_item(zone) == first
+    stubs = review.QueueFilter(flag_type="stub")
+    assert review.current_item(zone, stubs) == flag_of_type(zone, "stub")
+
+
+def test_the_needs_qgis_list_has_every_such_flag_with_its_location(zones):
+    zone = detect_with_stub_hidden(zones)
+    flags = read(zone, "flags")
+    stub = int(flags.index[flags["detector"] == "stub"][0])
+    other = review.build_queue(zone)[0].fid
+    for fid in (stub, other):
+        update_in_place(zones, "flags", "decision", "needs_qgis", [fid])
+    review.decide_flag(zone, review.build_queue(zone)[1].fid, "real", annotator="T")
+
+    items = review.needs_qgis_items(zone)
+
+    # A hidden detector's flag still needs fixing.
+    assert sorted(i.fid for i in items) == sorted([stub, other])
+    for item in items:
+        assert shapely.Point(item.location).within(
+            flags.geometry.loc[item.fid].buffer(1e-6)
+        )
+
+
+def test_the_needs_qgis_command_lists_each_zones_flags(zone, zones):
+    (flag, *_) = review.build_queue(zone, review.QueueFilter(flag_type="stub"))
+    assert isinstance(flag, review.FlagItem)
+    review.decide_flag(zone, flag.fid, "needs_qgis", annotator="Thandi")
+    x, y = flag.location
+
+    result = CliRunner().invoke(app, ["needs-qgis", "--zones-dir", str(zones)])
+
+    assert result.exit_code == 0, result.output
+    assert f"{TRAIN_ZONE}: flag {flag.fid} {flag.type} at {x:.1f}, {y:.1f}" in (
+        result.output.splitlines()
+    )
+
+
+def test_undo_keeps_a_row_another_real_flag_also_deletes(
+    zone, zones, shared_synthetic_zone
+):
+    (long, long_id), (last, last_id) = split_dead_end(zones, shared_synthetic_zone)
+    first = add_phantom_flag(zone, phantom_area(long, last), [long_id, last_id])
+    second = add_phantom_flag(zone, last.buffer(15.0).envelope, [last_id])
+    review.decide_flag(zone, first, "real", annotator="Thandi")
+    review.decide_flag(zone, second, "real", annotator="Thandi")
+
+    review.decide_flag(zone, first, "not_defect", annotator="Thandi")
+    status = read(zone, "labels").set_index("raw_id")["status"]
+    assert (status[long_id], status[last_id]) == ("kept", "deleted")
+
+    review.decide_flag(zone, second, "not_defect", annotator="Thandi")
+    assert read(zone, "labels").set_index("raw_id")["status"][last_id] == "kept"

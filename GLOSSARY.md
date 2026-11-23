@@ -123,6 +123,14 @@ _Avoid_: Triage, worklist
 The review queue's logic in plain Python, with no QGIS dependency. It builds the queue, records decisions and reports progress, and reads and writes only the zone GeoPackage. The QGIS plugin is a thin layer on top.
 _Avoid_: Review backend, queue engine
 
+**Review position**:
+The queue item an annotator stepped to by going back or forward, stored in the zone GeoPackage so that reopening the zone resumes there. A decision clears it, and the queue then continues at the first item not done.
+_Avoid_: Cursor, bookmark
+
+**Hidden detector**:
+A detector whose flags the review queue and progress leave out, set with `hidden` in the detector config. Its flags are still written to the zone GeoPackage.
+_Avoid_: Muted detector, disabled detector (a disabled detector does not run)
+
 **Cleaning spec**:
 The written rules annotators follow when deciding what counts as a defect and how to correct it. It is also the methodology reported in the paper.
 _Avoid_: Guidelines, rules, SOP

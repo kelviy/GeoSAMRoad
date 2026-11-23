@@ -1,5 +1,9 @@
 # Detector thresholds and toggles for the `detect` command.
 # Each run records this whole config in the zone GeoPackage's detector_runs layer.
+# Every detector has two toggles: `enabled` runs it, and `hidden` leaves its
+# flags out of the review queue and its progress. A hidden detector's flags are
+# still written, so they stay in the GeoPackage. The review queue reads
+# `hidden` from the zone's latest run, so re-run `detect` after changing it.
 # Values are provisional (KEL-11) and are tuned during cleaning.
 # Usage:
 #   python -m sentinel2data.cli detect --zones-dir <package-zones output> --detector-config <this file>
@@ -16,12 +20,14 @@ zone_edge_tolerance_m: 1.0
 # own road, and roads touching it, don't count.
 gap:
   enabled: true
+  hidden: false
   max_distance_m: 30.0
   snap_to_end_m: 5.0
 
 # Dangling stub: a road with a dead end, shorter than max_length_m.
 stub:
   enabled: true
+  hidden: false
   max_length_m: 30.0
 
 # Second source: compare the labels with Overture roads.
@@ -30,6 +36,7 @@ stub:
 # Flags are areas only, never Overture geometry (Overture is ODbL).
 overture:
   enabled: true
+  hidden: false
   # GeoParquet with a road_class column; `~` is expanded.
   path: ~/Documents/RoadVectorData/clean_road_data/overture_dense.parquet
   # A sample within this distance of a line of the other source is matched.
@@ -64,6 +71,7 @@ overture:
 # max_distance_m of the road it meets.
 duplicate:
   enabled: true
+  hidden: false
   max_distance_m: 10.0
   min_overlap_share: 0.8
   min_length_m: 20.0
@@ -72,3 +80,4 @@ duplicate:
 # vertex of both.
 crossing:
   enabled: true
+  hidden: false

@@ -30,6 +30,8 @@ DEFAULT_CONFIG_PATH = Path(__file__).parents[1] / "configs" / "detectors.yaml"
 @dataclass(frozen=True)
 class GapConfig:
     enabled: bool
+    # Its flags are left out of the review queue (still written).
+    hidden: bool
     max_distance_m: float
     snap_to_end_m: float
 
@@ -37,12 +39,14 @@ class GapConfig:
 @dataclass(frozen=True)
 class StubConfig:
     enabled: bool
+    hidden: bool
     max_length_m: float
 
 
 @dataclass(frozen=True)
 class OvertureConfig:
     enabled: bool
+    hidden: bool
     path: str
     match_tolerance_m: float
     sample_spacing_m: float
@@ -59,6 +63,7 @@ class OvertureConfig:
 @dataclass(frozen=True)
 class DuplicateConfig:
     enabled: bool
+    hidden: bool
     max_distance_m: float
     min_overlap_share: float
     min_length_m: float
@@ -67,6 +72,7 @@ class DuplicateConfig:
 @dataclass(frozen=True)
 class CrossingConfig:
     enabled: bool
+    hidden: bool
 
 
 @dataclass(frozen=True)

@@ -184,7 +184,7 @@ def test_each_run_is_recorded_with_the_config_it_used(zones, tmp_path):
     assert len(runs) == 2
     configs = [json.loads(c) for c in runs["config"]]
     assert configs[0] == base_config()
-    assert configs[1]["stub"] == {"enabled": True, "max_length_m": 20.0}
+    assert configs[1]["stub"] == {"enabled": True, "hidden": False, "max_length_m": 20.0}
     assert all(pd.Timestamp(t).tzinfo is not None for t in runs["run_at"])
 
 

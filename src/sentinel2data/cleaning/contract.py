@@ -9,6 +9,9 @@ LABELS_LAYER = "labels"
 TILES_LAYER = "tiles"
 FLAGS_LAYER = "flags"
 DETECTOR_RUNS_LAYER = "detector_runs"
+# Tables the review core creates on its first write (see ``review``).
+FLAG_DELETIONS_LAYER = "flag_deletions"
+REVIEW_POSITION_LAYER = "review_position"
 # The one layer of <zone>_overture.gpkg, a separate file from the zone GeoPackage.
 OVERTURE_LAYER = "overture_roads"
 
@@ -21,6 +24,8 @@ DEFECTS = ("gap", "stub", "misalignment", "phantom", "missing", "temporal")
 # flags: point or polygon locations (the QGIS project shows Point and Polygon
 # rows; write single-part geometries).
 FLAG_TYPES = ("gap", "stub", "duplicate", "crossing", "missing?", "phantom?")
+# Where a flag's evidence comes from: the labels alone, or the second source.
+FLAG_SOURCES = ("labels", "overture")
 PENDING = "pending"
 FLAG_DECISIONS = (PENDING, "real", "not_defect", "needs_qgis")
 

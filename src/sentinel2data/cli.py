@@ -220,6 +220,26 @@ def progress(
         )
 
 
+@app.command("needs-qgis")
+def needs_qgis(
+    zones_dir: Annotated[
+        Path,
+        typer.Option(help="Directory `package-zones` wrote, one folder per zone"),
+    ],
+    zone: Annotated[
+        Optional[List[str]],
+        typer.Option(help="Zone filename stem to list. Repeat for several; default all zones"),
+    ] = None,
+):
+    """List every flag marked needs_qgis, with a point on it in the zone CRS, to fix in QGIS."""
+    from sentinel2data.cleaning import review
+
+    for name, gpkg in _packaged_zones(zones_dir, zone).items():
+        for item in review.needs_qgis_items(gpkg):
+            x, y = item.location
+            typer.echo(f"{name}: flag {item.fid} {item.type} at {x:.1f}, {y:.1f}")
+
+
 @app.command()
 def roads(
     out: Annotated[
