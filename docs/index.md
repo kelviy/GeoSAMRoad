@@ -11,16 +11,16 @@ These docs show you how to clean the ROSA road labels and how the pipeline behin
 Kelviy packages each zone and runs the detectors. You claim a zone, review its flags and proposals with the plugin, fix the rest by hand, and upload the zone again. The assembler and retiler then turn the cleaned zones back into the ROSA dataset that the models train on. These two steps are **not built yet**.
 
 ```mermaid
-flowchart LR
-    raw[Raw labels<br>and imagery] --> pkg[Package zones]
-    pkg --> det[Run detectors]
-    det --> claim[Claim and<br>download a zone]
-    claim --> review[Review with<br>the plugin]
-    review --> hand[Clean by hand<br>in QGIS]
-    hand --> back[Hand back<br>your zone]
-    back --> asm[Assemble<br>not built yet]
-    asm --> tile[Retile<br>not built yet]
-    tile --> ds[ROSA dataset<br>for the models]
+flowchart TB
+    subgraph prep [Prepare and review]
+        direction LR
+        raw[Raw labels<br>and imagery] --> pkg[Package zones] --> det[Run detectors] --> claim[Claim and<br>download a zone] --> review[Review with<br>the plugin]
+    end
+    subgraph rebuild [Clean and rebuild]
+        direction LR
+        hand[Clean by hand<br>in QGIS] --> back[Hand back<br>your zone] --> asm[Assemble<br>not built yet] --> tile[Retile<br>not built yet] --> ds[ROSA dataset<br>for the models]
+    end
+    prep --> rebuild
 
     classDef you fill:#d6ecff,stroke:#1f6fb2,color:#0b2a44
     classDef pending stroke-dasharray:5 5
